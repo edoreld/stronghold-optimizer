@@ -21,7 +21,7 @@ const OUTFITS = [
 
 const CAPS = {
   specialCost:10, generalCost:30,
-  specialGSC:10,  specialTime:5,
+  specialGSC:10,  specialTime:10,
   specialEnergy:10, generalEnergy:10,
   generalGSC:30,  generalTime:30,
 };
