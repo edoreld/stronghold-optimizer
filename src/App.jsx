@@ -333,12 +333,12 @@ export default function App() {
               const on=p.structs.includes(s.id);
               return (
                 <div key={s.id} onClick={()=>togS(s.id)}
-                  style={{display:"flex", gap:8, alignItems:"flex-start", marginBottom:10, cursor:"pointer"}}>
+                  style={{display:"flex", gap:8, alignItems:"flex-start", marginBottom:10, cursor:"pointer", textAlign:"left"}}>
                   <Checkbox checked={on} onChange={()=>togS(s.id)} color="#2d6aad"/>
-                  <div>
+                  <div style={{textAlign:"left"}}>
                     <div style={{fontSize:12, color:on?TEXT:"#3a5060", fontWeight:on?"600":"normal"}}>{s.name}</div>
-                    <div style={{fontSize:10, color:"#3a5060", textAlign:"left"}}>{s.acq}</div>
-                    <div style={{fontSize:10, color:"#4a6878", textAlign:"left", wordBreak:"break-word"}}>
+                    <div style={{fontSize:10, color:"#3a5060"}}>{s.acq}</div>
+                    <div style={{fontSize:10, color:"#4a6878", wordBreak:"break-word"}}>
                       {Object.entries(s.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join(" · ")}
                     </div>
                   </div>
@@ -353,11 +353,11 @@ export default function App() {
               const on=p.outfits.includes(o.id);
               return (
                 <div key={o.id} onClick={()=>togO(o.id)}
-                  style={{display:"flex", gap:8, alignItems:"flex-start", marginBottom:10, cursor:"pointer"}}>
+                  style={{display:"flex", gap:8, alignItems:"flex-start", marginBottom:10, cursor:"pointer", textAlign:"left"}}>
                   <Checkbox checked={on} onChange={()=>togO(o.id)} color="#ad6a2d"/>
-                  <div>
+                  <div style={{textAlign:"left"}}>
                     <div style={{fontSize:12, color:on?TEXT:"#3a5060", fontWeight:on?"600":"normal"}}>{o.name}</div>
-                    <div style={{fontSize:10, color:"#4a6878", textAlign:"left", wordBreak:"break-word"}}>
+                    <div style={{fontSize:10, color:"#4a6878", wordBreak:"break-word"}}>
                       {Object.entries(o.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join(" · ")}
                     </div>
                   </div>
