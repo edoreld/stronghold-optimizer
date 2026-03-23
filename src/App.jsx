@@ -337,8 +337,8 @@ export default function App() {
                   <Checkbox checked={on} onChange={()=>togS(s.id)} color="#2d6aad"/>
                   <div>
                     <div style={{fontSize:12, color:on?TEXT:"#3a5060", fontWeight:on?"600":"normal"}}>{s.name}</div>
-                    <div style={{fontSize:10, color:"#3a5060"}}>{s.acq}</div>
-                    <div style={{fontSize:10, color:"#4a6878"}}>
+                    <div style={{fontSize:10, color:"#3a5060", textAlign:"left"}}>{s.acq}</div>
+                    <div style={{fontSize:10, color:"#4a6878", textAlign:"left", wordBreak:"break-word"}}>
                       {Object.entries(s.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join(" · ")}
                     </div>
                   </div>
@@ -357,7 +357,7 @@ export default function App() {
                   <Checkbox checked={on} onChange={()=>togO(o.id)} color="#ad6a2d"/>
                   <div>
                     <div style={{fontSize:12, color:on?TEXT:"#3a5060", fontWeight:on?"600":"normal"}}>{o.name}</div>
-                    <div style={{fontSize:10, color:"#4a6878"}}>
+                    <div style={{fontSize:10, color:"#4a6878", textAlign:"left", wordBreak:"break-word"}}>
                       {Object.entries(o.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join(" · ")}
                     </div>
                   </div>
