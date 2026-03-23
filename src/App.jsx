@@ -26,17 +26,16 @@ const CAPS = {
 };
 
 const STATS = {
-  specialCost:  {label:"[Special] Crafting Cost",                color:"#f0a500", pri:1, positive:false},
-  generalCost:  {label:"Crafting Cost",                          color:"#d4c060", pri:2, positive:false},
-  specialEnergy:{label:"[Special] Crafting Action Energy Consumption", color:"#5ba4cf", pri:3, positive:false},
-  specialTime:  {label:"[Special] Crafting Time",                color:"#60c890", pri:4, positive:false},
-  generalEnergy:{label:"Crafting Action Energy",                 color:"#4890bf", pri:5, positive:false},
-  generalTime:  {label:"Crafting Time",                          color:"#50b070", pri:6, positive:false},
-  specialGSC:   {label:"[Special] Crafting Great Success Chance",color:"#c080e0", pri:7, positive:true},
-  generalGSC:   {label:"Crafting Great Success Chance",          color:"#9060c0", pri:8, positive:true},
+  specialCost:  {label:"[Special] Crafting Cost",                          color:"#f0a500", pri:1, positive:false},
+  generalCost:  {label:"Crafting Cost",                                    color:"#d4c060", pri:2, positive:false},
+  specialEnergy:{label:"[Special] Crafting Action Energy Consumption",     color:"#5ba4cf", pri:3, positive:false},
+  specialTime:  {label:"[Special] Crafting Time",                          color:"#60c890", pri:4, positive:false},
+  generalEnergy:{label:"Crafting Action Energy",                           color:"#4890bf", pri:5, positive:false},
+  generalTime:  {label:"Crafting Time",                                    color:"#50b070", pri:6, positive:false},
+  specialGSC:   {label:"[Special] Crafting Great Success Chance",          color:"#c080e0", pri:7, positive:true},
+  generalGSC:   {label:"Crafting Great Success Chance",                    color:"#9060c0", pri:8, positive:true},
 };
 
-// Format a bonus value with correct sign
 const fmtBonus = (k, v) => `${STATS[k]?.positive ? "+" : "-"}${v}%`;
 
 const W = {
@@ -72,8 +71,9 @@ function scoreCombo(structs, outfits, innate) {
   return Object.entries(W).reduce((s,[k,w])=>s+((e[k]||0)-(ei[k]||0))*w, 0);
 }
 
-function optimize(availS, availO, innate, n=3) {
-  const sk = Math.min(3, availS.length), ok = Math.min(3, availO.length);
+function optimize(availS, availO, innate, sSlots, oSlots, n=3) {
+  const sk = Math.min(sSlots, availS.length);
+  const ok = Math.min(oSlots, availO.length);
   if (sk === 0 || ok === 0) return [];
   const sc = combos(availS, sk), oc = combos(availO, ok);
   const all = [];
@@ -103,6 +103,22 @@ function Checkbox({checked, onChange, color="#2d6aad"}) {
       cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
     }}>
       {checked && <span style={{color:"#fff",fontSize:10,lineHeight:1}}>✓</span>}
+    </div>
+  );
+}
+
+function SlotPicker({label, value, max, onChange}) {
+  return (
+    <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+      <span style={{fontSize:12, color:TEXT}}>{label}</span>
+      <div style={{display:"flex", gap:4}}>
+        {Array.from({length:max},(_,i)=>i+1).map(n=>(
+          <button key={n} onClick={()=>onChange(n)} style={{
+            ...btnStyle(value===n),
+            padding:"3px 10px", fontSize:12, minWidth:32,
+          }}>{n}</button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -169,7 +185,7 @@ function ResultCard({r, rank, innate}) {
         <div>
           <div style={{fontSize:10, color:"#5ba4cf", fontWeight:"bold", letterSpacing:1, marginBottom:5}}>STRUCTURES</div>
           {r.structs.map(s=>(
-            <div key={s.id} style={{marginBottom:4}}>
+            <div key={s.id} style={{marginBottom:4, textAlign:"left"}}>
               <span style={{fontSize:12, color:TEXT}}>• {s.name}</span>
               <div style={{fontSize:10, color:"#3a5a6a", marginLeft:8}}>
                 {Object.entries(s.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join("  ·  ")}
@@ -180,7 +196,7 @@ function ResultCard({r, rank, innate}) {
         <div>
           <div style={{fontSize:10, color:"#cf9a5b", fontWeight:"bold", letterSpacing:1, marginBottom:5}}>OUTFITS</div>
           {r.outfits.map(o=>(
-            <div key={o.id} style={{marginBottom:4}}>
+            <div key={o.id} style={{marginBottom:4, textAlign:"left"}}>
               <span style={{fontSize:12, color:TEXT}}>• {o.name}</span>
               <div style={{fontSize:10, color:"#3a5a6a", marginLeft:8}}>
                 {Object.entries(o.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join("  ·  ")}
@@ -199,18 +215,31 @@ function ResultCard({r, rank, innate}) {
   );
 }
 
-const DEF_INNATE = {specialTime:6, specialEnergy:3, generalGSC:3, generalTime:6, generalCost:4};
-const DEF_STRUCTS = ["acrobat","cards","luterra","divine","night"];
+const DEF_INNATE = {
+  specialCost:0, generalCost:4, specialEnergy:3, specialTime:3,
+  generalEnergy:0, generalTime:6, specialGSC:0, generalGSC:3,
+};
+const DEF_STRUCTS = ["acrobat","sheep","cards","divine","luterra","cannon"];
 const DEF_OUTFITS = ["payla","thirain","nia","nineveh"];
+const DEF_SSLOTS = 3;
+const DEF_OSLOTS = 3;
+
 const LS_KEY = "stronghold-optimizer-profiles";
 const LS_IDX = "stronghold-optimizer-idx";
 
 function loadProfiles() {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (raw) { const p = JSON.parse(raw); if (p?.length) return p; }
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p?.length) return p.map(x=>({
+        structureSlots: DEF_SSLOTS,
+        outfitSlots: DEF_OSLOTS,
+        ...x,
+      }));
+    }
   } catch {}
-  return [{id:1, name:"Main", innate:{...DEF_INNATE}, structs:[...DEF_STRUCTS], outfits:[...DEF_OUTFITS]}];
+  return [{id:1, name:"Main", innate:{...DEF_INNATE}, structs:[...DEF_STRUCTS], outfits:[...DEF_OUTFITS], structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS}];
 }
 
 function loadIdx(profiles) {
@@ -241,7 +270,11 @@ export default function App() {
 
   const addProf = () => {
     if (!newName.trim()) return;
-    const np = {id:Date.now(), name:newName.trim(), innate:{...DEF_INNATE}, structs:[...DEF_STRUCTS], outfits:[...DEF_OUTFITS]};
+    const np = {
+      id:Date.now(), name:newName.trim(),
+      innate:{...DEF_INNATE}, structs:[...DEF_STRUCTS], outfits:[...DEF_OUTFITS],
+      structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS,
+    };
     setProfiles(prev=>[...prev,np]);
     setIdx(profiles.length);
     setNewName("");
@@ -262,10 +295,12 @@ export default function App() {
 
   const availS = STRUCTURES.filter(s=>p.structs.includes(s.id));
   const availO = OUTFITS.filter(o=>p.outfits.includes(o.id));
+  const sSlots = p.structureSlots ?? DEF_SSLOTS;
+  const oSlots = p.outfitSlots ?? DEF_OSLOTS;
 
-  const results = useMemo(()=>optimize(availS, availO, p.innate),
+  const results = useMemo(()=>optimize(availS, availO, p.innate, sSlots, oSlots),
     // eslint-disable-next-line
-    [availS.map(s=>s.id).join(), availO.map(o=>o.id).join(), JSON.stringify(p.innate)]);
+    [availS.map(s=>s.id).join(), availO.map(o=>o.id).join(), JSON.stringify(p.innate), sSlots, oSlots]);
 
   const cappedInnate = Object.entries(p.innate).filter(([k,v])=>CAPS[k]&&v>=CAPS[k]);
 
@@ -277,6 +312,7 @@ export default function App() {
         <div style={{fontSize:11, color:DIM}}>Abidos Fusion Material profit maximizer — Lost Ark T4</div>
       </div>
 
+      {/* Profile bar */}
       <div style={{...panelStyle, display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", padding:10}}>
         <span style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1}}>PROFILE</span>
         {profiles.map((pf,i)=>(
@@ -300,6 +336,7 @@ export default function App() {
         }
       </div>
 
+      {/* Tabs */}
       <div style={{display:"flex", gap:4, marginBottom:12}}>
         {[["opt","⚡ Optimizer"],["cfg","⚙ Configuration"]].map(([id,lbl])=>(
           <button key={id} style={{...btnStyle(tab===id), padding:"6px 18px", fontSize:13}} onClick={()=>setTab(id)}>{lbl}</button>
@@ -308,25 +345,34 @@ export default function App() {
 
       {tab==="cfg" ? (
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12}}>
-          <div style={panelStyle}>
-            <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>INNATE / PET BONUSES</div>
-            {Object.keys(STATS).map(stat=>{
-              const cap=CAPS[stat], v=p.innate[stat]||0, capped=cap&&v>=cap;
-              return (
-                <div key={stat} style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
-                  <span style={{fontSize:11, color:capped?"#e08050":DIM}}>
-                    {STATS[stat].label}{capped?" ⚠":""}
-                  </span>
-                  <div style={{display:"flex", alignItems:"center", gap:4}}>
-                    <button onClick={()=>setIn(stat,v-1)} style={{...btnStyle(false), padding:"1px 6px", fontSize:13}}>−</button>
-                    <span style={{width:28, textAlign:"center", fontSize:13, color:capped?"#e08050":TEXT}}>{v}%</span>
-                    <button onClick={()=>setIn(stat,v+1)} style={{...btnStyle(false), padding:"1px 6px", fontSize:13}}>+</button>
+
+          {/* Left column: innate + slots */}
+          <div>
+            <div style={panelStyle}>
+              <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>SLOT CONFIGURATION</div>
+              <SlotPicker label="Structure slots" value={sSlots} max={3} onChange={v=>upd({structureSlots:v})}/>
+              <SlotPicker label="Outfit slots"    value={oSlots} max={3} onChange={v=>upd({outfitSlots:v})}/>
+            </div>
+
+            <div style={panelStyle}>
+              <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>INNATE / PET BONUSES</div>
+              {Object.keys(STATS).map(stat=>{
+                const cap=CAPS[stat], v=p.innate[stat]||0, capped=cap&&v>=cap;
+                return (
+                  <div key={stat} style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+                    <span style={{fontSize:11, color:capped?"#e08050":DIM}}>{STATS[stat].label}{capped?" ⚠":""}</span>
+                    <div style={{display:"flex", alignItems:"center", gap:4, flexShrink:0}}>
+                      <button onClick={()=>setIn(stat,v-1)} style={{...btnStyle(false), padding:"1px 6px", fontSize:13}}>−</button>
+                      <span style={{width:28, textAlign:"center", fontSize:13, color:capped?"#e08050":TEXT}}>{v}%</span>
+                      <button onClick={()=>setIn(stat,v+1)} style={{...btnStyle(false), padding:"1px 6px", fontSize:13}}>+</button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
+          {/* Structures */}
           <div style={panelStyle}>
             <div style={{fontSize:10, color:"#5ba4cf", fontWeight:"bold", letterSpacing:1, marginBottom:12}}>AVAILABLE STRUCTURES</div>
             {STRUCTURES.map(s=>{
@@ -347,6 +393,7 @@ export default function App() {
             })}
           </div>
 
+          {/* Outfits */}
           <div style={panelStyle}>
             <div style={{fontSize:10, color:"#cf9a5b", fontWeight:"bold", letterSpacing:1, marginBottom:12}}>AVAILABLE OUTFITS</div>
             {OUTFITS.map(o=>{
@@ -385,6 +432,21 @@ export default function App() {
               </div>
             </div>
           )}
+
+          <div style={{...panelStyle, padding:"8px 14px", marginBottom:10, display:"flex", gap:16, flexWrap:"wrap"}}>
+            <span style={{fontSize:11, color:DIM}}>
+              Structure slots: <span style={{color:GOLD, fontWeight:"bold"}}>{sSlots}</span>
+            </span>
+            <span style={{fontSize:11, color:DIM}}>
+              Outfit slots: <span style={{color:GOLD, fontWeight:"bold"}}>{oSlots}</span>
+            </span>
+            <span style={{fontSize:11, color:DIM}}>
+              Available structures: <span style={{color:TEXT}}>{availS.length}</span>
+            </span>
+            <span style={{fontSize:11, color:DIM}}>
+              Available outfits: <span style={{color:TEXT}}>{availO.length}</span>
+            </span>
+          </div>
 
           {results.length===0
             ? <div style={{...panelStyle, textAlign:"center", color:"#e06060", padding:30}}>
