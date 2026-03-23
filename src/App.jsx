@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
 
-// ── Data ─────────────────────────────────────────────────────────────
 const STRUCTURES = [
   { id:"ansm",    name:"ANSM-L",                 acq:"Limited Event",       bonuses:{specialCost:4, specialGSC:2} },
   { id:"acrobat", name:"Acrobat's Waiting Room",  acq:"Shop (F4)",           bonuses:{specialCost:4, specialTime:2} },
@@ -13,10 +12,10 @@ const STRUCTURES = [
 ];
 
 const OUTFITS = [
-  { id:"payla",   name:"Payla – Vern Ball",          bonuses:{specialCost:2, specialGSC:4} },
-  { id:"thirain", name:"Thirain – Irresistible Heir", bonuses:{generalCost:1, generalTime:2} },
-  { id:"nia",     name:"Nia – Basic Outfit",          bonuses:{specialCost:1} },
-  { id:"nineveh", name:"Nineveh – Cute Maid",         bonuses:{generalGSC:2} },
+  { id:"payla",   name:"Payla – Vern Ball",           bonuses:{specialCost:2, specialGSC:4} },
+  { id:"thirain", name:"Thirain – Irresistible Heir",  bonuses:{generalCost:1, generalTime:2} },
+  { id:"nia",     name:"Nia – Basic Outfit",           bonuses:{specialCost:1} },
+  { id:"nineveh", name:"Nineveh – Cute Maid",          bonuses:{generalGSC:2, generalTime:1} },
 ];
 
 const CAPS = {
@@ -27,24 +26,25 @@ const CAPS = {
 };
 
 const STATS = {
-  specialCost:  {label:"[Sp] Crafting Cost",   color:"#f0a500", pri:1},
-  generalCost:  {label:"Crafting Cost",         color:"#d4c060", pri:2},
-  specialEnergy:{label:"[Sp] Action Energy",    color:"#5ba4cf", pri:3},
-  specialTime:  {label:"[Sp] Crafting Time",    color:"#60c890", pri:4},
-  generalEnergy:{label:"Action Energy",         color:"#4890bf", pri:5},
-  generalTime:  {label:"Crafting Time",         color:"#50b070", pri:6},
-  specialGSC:   {label:"[Sp] Great Success",    color:"#c080e0", pri:7},
-  generalGSC:   {label:"Great Success",         color:"#9060c0", pri:8},
+  specialCost:  {label:"[Special] Crafting Cost",                color:"#f0a500", pri:1, positive:false},
+  generalCost:  {label:"Crafting Cost",                          color:"#d4c060", pri:2, positive:false},
+  specialEnergy:{label:"[Special] Crafting Action Energy Consumption", color:"#5ba4cf", pri:3, positive:false},
+  specialTime:  {label:"[Special] Crafting Time",                color:"#60c890", pri:4, positive:false},
+  generalEnergy:{label:"Crafting Action Energy",                 color:"#4890bf", pri:5, positive:false},
+  generalTime:  {label:"Crafting Time",                          color:"#50b070", pri:6, positive:false},
+  specialGSC:   {label:"[Special] Crafting Great Success Chance",color:"#c080e0", pri:7, positive:true},
+  generalGSC:   {label:"Crafting Great Success Chance",          color:"#9060c0", pri:8, positive:true},
 };
 
-// Profit weight per 1% effective gain
+// Format a bonus value with correct sign
+const fmtBonus = (k, v) => `${STATS[k]?.positive ? "+" : "-"}${v}%`;
+
 const W = {
   specialCost:100, specialEnergy:35, generalCost:22,
   generalEnergy:14, specialTime:8,   generalTime:4,
   specialGSC:4,     generalGSC:3,
 };
 
-// ── Algorithm ─────────────────────────────────────────────────────────
 function combos(arr, k) {
   if (k <= 0) return [[]];
   if (arr.length === 0) return [];
@@ -84,7 +84,6 @@ function optimize(availS, availO, innate, n=3) {
   }));
 }
 
-// ── Style constants ───────────────────────────────────────────────────
 const BG="#0a1520", PANEL="#111d2b", BORDER="#1e3050", TEXT="#c8d4e0", DIM="#5a7a90", GOLD="#f0a500";
 
 const btnStyle = (active, danger=false) => ({
@@ -96,7 +95,6 @@ const btnStyle = (active, danger=false) => ({
 
 const panelStyle = {background:PANEL, border:`1px solid ${BORDER}`, borderRadius:8, padding:14, marginBottom:12};
 
-// ── Sub-components ────────────────────────────────────────────────────
 function Checkbox({checked, onChange, color="#2d6aad"}) {
   return (
     <div onClick={onChange} style={{
@@ -111,7 +109,7 @@ function Checkbox({checked, onChange, color="#2d6aad"}) {
 
 function StatBar({stat, rawTotal=0, innateVal=0}) {
   const cap = CAPS[stat]||100;
-  const meta = STATS[stat]||{label:stat, color:"#888"};
+  const meta = STATS[stat]||{label:stat, color:"#888", positive:false};
   const effTotal = Math.min(rawTotal, cap);
   const effInnate = Math.min(innateVal, cap);
   const equipGain = Math.max(0, effTotal - effInnate);
@@ -119,13 +117,14 @@ function StatBar({stat, rawTotal=0, innateVal=0}) {
   const pctInnate = (effInnate/cap)*100;
   const pctEquip = (equipGain/cap)*100;
   const atCap = effTotal >= cap;
+  const sign = meta.positive ? "+" : "-";
 
   return (
     <div style={{marginBottom:6}}>
       <div style={{display:"flex", justifyContent:"space-between", fontSize:11, color:DIM, marginBottom:2}}>
         <span>{meta.label}</span>
         <span style={{color: waste>0?"#e06060": atCap?GOLD:TEXT}}>
-          -{effTotal}% / {cap}%{waste>0?` ⚠ ${waste}% wasted`:""}
+          {sign}{effTotal}% / {cap}%{waste>0?` ⚠ ${waste}% wasted`:""}
         </span>
       </div>
       <div style={{height:5, background:"#0a1420", borderRadius:3, display:"flex", overflow:"hidden"}}>
@@ -145,7 +144,7 @@ function ResultCard({r, rank, innate}) {
 
   const badges = [];
   if (rank===0) badges.push({txt:"★ OPTIMAL", col:GOLD});
-  if (!capHit) badges.push({txt:`⚠ [Sp] Cost ${spCostEff}%/10%`, col:"#e06060"});
+  if (!capHit) badges.push({txt:`⚠ [Special] Crafting Cost ${spCostEff}%/10%`, col:"#e06060"});
   if (totalWaste>0) badges.push({txt:`⚠ ${totalWaste}% wasted`, col:"#e09040"});
   if (capHit && totalWaste===0) badges.push({txt:"✓ No waste", col:"#60c060"});
 
@@ -173,7 +172,7 @@ function ResultCard({r, rank, innate}) {
             <div key={s.id} style={{marginBottom:4}}>
               <span style={{fontSize:12, color:TEXT}}>• {s.name}</span>
               <div style={{fontSize:10, color:"#3a5a6a", marginLeft:8}}>
-                {Object.entries(s.bonuses).map(([k,v])=>`${STATS[k]?.label||k} -${v}%`).join("  ·  ")}
+                {Object.entries(s.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join("  ·  ")}
               </div>
             </div>
           ))}
@@ -184,7 +183,7 @@ function ResultCard({r, rank, innate}) {
             <div key={o.id} style={{marginBottom:4}}>
               <span style={{fontSize:12, color:TEXT}}>• {o.name}</span>
               <div style={{fontSize:10, color:"#3a5a6a", marginLeft:8}}>
-                {Object.entries(o.bonuses).map(([k,v])=>`${STATS[k]?.label||k} -${v}%`).join("  ·  ")}
+                {Object.entries(o.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join("  ·  ")}
               </div>
             </div>
           ))}
@@ -200,7 +199,6 @@ function ResultCard({r, rank, innate}) {
   );
 }
 
-// ── Main App ──────────────────────────────────────────────────────────
 const DEF_INNATE = {specialTime:6, specialEnergy:3, generalGSC:3, generalTime:6, generalCost:4};
 const DEF_STRUCTS = ["acrobat","cards","luterra","divine","night"];
 const DEF_OUTFITS = ["payla","thirain","nia","nineveh"];
@@ -274,13 +272,11 @@ export default function App() {
   return (
     <div style={{background:BG, color:TEXT, minHeight:"100vh", fontFamily:"'Segoe UI',sans-serif", padding:12, fontSize:13}}>
 
-      {/* Header */}
       <div style={{marginBottom:12}}>
         <div style={{fontSize:18, fontWeight:"bold", color:GOLD}}>⚒ Stronghold Optimizer</div>
         <div style={{fontSize:11, color:DIM}}>Abidos Fusion Material profit maximizer — Lost Ark T4</div>
       </div>
 
-      {/* Profile bar */}
       <div style={{...panelStyle, display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", padding:10}}>
         <span style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1}}>PROFILE</span>
         {profiles.map((pf,i)=>(
@@ -304,7 +300,6 @@ export default function App() {
         }
       </div>
 
-      {/* Tabs */}
       <div style={{display:"flex", gap:4, marginBottom:12}}>
         {[["opt","⚡ Optimizer"],["cfg","⚙ Configuration"]].map(([id,lbl])=>(
           <button key={id} style={{...btnStyle(tab===id), padding:"6px 18px", fontSize:13}} onClick={()=>setTab(id)}>{lbl}</button>
@@ -313,7 +308,6 @@ export default function App() {
 
       {tab==="cfg" ? (
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12}}>
-          {/* Innate bonuses */}
           <div style={panelStyle}>
             <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>INNATE / PET BONUSES</div>
             {Object.keys(STATS).map(stat=>{
@@ -333,7 +327,6 @@ export default function App() {
             })}
           </div>
 
-          {/* Structures */}
           <div style={panelStyle}>
             <div style={{fontSize:10, color:"#5ba4cf", fontWeight:"bold", letterSpacing:1, marginBottom:12}}>AVAILABLE STRUCTURES</div>
             {STRUCTURES.map(s=>{
@@ -346,7 +339,7 @@ export default function App() {
                     <div style={{fontSize:12, color:on?TEXT:"#3a5060", fontWeight:on?"600":"normal"}}>{s.name}</div>
                     <div style={{fontSize:10, color:"#3a5060"}}>{s.acq}</div>
                     <div style={{fontSize:10, color:"#4a6878"}}>
-                      {Object.entries(s.bonuses).map(([k,v])=>`${STATS[k]?.label||k} -${v}%`).join(" · ")}
+                      {Object.entries(s.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join(" · ")}
                     </div>
                   </div>
                 </div>
@@ -354,7 +347,6 @@ export default function App() {
             })}
           </div>
 
-          {/* Outfits */}
           <div style={panelStyle}>
             <div style={{fontSize:10, color:"#cf9a5b", fontWeight:"bold", letterSpacing:1, marginBottom:12}}>AVAILABLE OUTFITS</div>
             {OUTFITS.map(o=>{
@@ -366,7 +358,7 @@ export default function App() {
                   <div>
                     <div style={{fontSize:12, color:on?TEXT:"#3a5060", fontWeight:on?"600":"normal"}}>{o.name}</div>
                     <div style={{fontSize:10, color:"#4a6878"}}>
-                      {Object.entries(o.bonuses).map(([k,v])=>`${STATS[k]?.label||k} -${v}%`).join(" · ")}
+                      {Object.entries(o.bonuses).map(([k,v])=>`${STATS[k]?.label||k} ${fmtBonus(k,v)}`).join(" · ")}
                     </div>
                   </div>
                 </div>
@@ -387,7 +379,7 @@ export default function App() {
                     background:"#2a1a08", border:"1px solid #6a4010",
                     color:"#c08030", borderRadius:4, padding:"2px 8px", fontSize:11,
                   }}>
-                    {STATS[k]?.label} (-{Math.min(v,CAPS[k])}% = cap)
+                    {STATS[k]?.label} ({fmtBonus(k, Math.min(v,CAPS[k]))} = cap)
                   </span>
                 ))}
               </div>
