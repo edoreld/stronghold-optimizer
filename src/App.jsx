@@ -274,8 +274,9 @@ const DEF_OUTFITS = ["payla","thirain","nia","nineveh"];
 const DEF_PRICES  = {abidosPrice:150, timberPrice:155, tenderPrice:309, abidosTimberPrice:2049};
 const DEF_SSLOTS  = 3, DEF_OSLOTS = 3;
 
-const LS_KEY = "stronghold-optimizer-profiles";
-const LS_IDX = "stronghold-optimizer-idx";
+const LS_KEY    = "stronghold-optimizer-profiles";
+const LS_IDX    = "stronghold-optimizer-idx";
+const LS_PRICES = "stronghold-optimizer-prices";
 
 function loadProfiles() {
   try {
@@ -283,12 +284,19 @@ function loadProfiles() {
     if (raw) {
       const p = JSON.parse(raw);
       if (p?.length) return p.map(x=>({
-        structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, prices:{...DEF_PRICES}, ...x,
-        prices:{...DEF_PRICES, ...(x.prices||{})},
+        structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, ...x,
       }));
     }
   } catch {}
-  return [{id:1, name:"Main", innate:{...DEF_INNATE}, structs:[...DEF_STRUCTS], outfits:[...DEF_OUTFITS], structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, prices:{...DEF_PRICES}}];
+  return [{id:1, name:"Main", innate:{...DEF_INNATE}, structs:[...DEF_STRUCTS], outfits:[...DEF_OUTFITS], structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS}];
+}
+
+function loadPrices() {
+  try {
+    const raw = localStorage.getItem(LS_PRICES);
+    if (raw) return {...DEF_PRICES, ...JSON.parse(raw)};
+  } catch {}
+  return {...DEF_PRICES};
 }
 
 function loadIdx(profiles) {
@@ -300,6 +308,7 @@ function loadIdx(profiles) {
 export default function App() {
   const [profiles, setProfiles] = useState(loadProfiles);
   const [idx, setIdx]           = useState(()=>loadIdx(loadProfiles()));
+  const [prices, setPrices]     = useState(loadPrices);
   const [tab, setTab]           = useState("opt");
   const [newName, setNewName]   = useState("");
   const [editingName, setEditingName] = useState(false);
@@ -307,17 +316,18 @@ export default function App() {
 
   useEffect(()=>{ try{localStorage.setItem(LS_KEY,JSON.stringify(profiles));}catch{} },[profiles]);
   useEffect(()=>{ try{localStorage.setItem(LS_IDX,String(idx));}catch{} },[idx]);
+  useEffect(()=>{ try{localStorage.setItem(LS_PRICES,JSON.stringify(prices));}catch{} },[prices]);
 
   const p   = profiles[idx];
   const upd = ch => setProfiles(prev=>prev.map((x,i)=>i===idx?{...x,...ch}:x));
   const togS = id => upd({structs:p.structs.includes(id)?p.structs.filter(x=>x!==id):[...p.structs,id]});
   const togO = id => upd({outfits:p.outfits.includes(id)?p.outfits.filter(x=>x!==id):[...p.outfits,id]});
-  const setIn   = (k,v) => upd({innate:{...p.innate,[k]:Math.max(0,parseInt(v)||0)}});
-  const setPrice = (k,v) => upd({prices:{...p.prices,[k]:v}});
+  const setIn    = (k,v) => upd({innate:{...p.innate,[k]:Math.max(0,parseInt(v)||0)}});
+  const setPrice = (k,v) => setPrices(prev=>({...prev,[k]:v}));
 
   const addProf = () => {
     if (!newName.trim()) return;
-    setProfiles(prev=>[...prev,{id:Date.now(),name:newName.trim(),innate:{...DEF_INNATE},structs:[...DEF_STRUCTS],outfits:[...DEF_OUTFITS],structureSlots:DEF_SSLOTS,outfitSlots:DEF_OSLOTS,prices:{...DEF_PRICES}}]);
+            setProfiles(prev=>[...prev,{id:Date.now(),name:newName.trim(),innate:{...DEF_INNATE},structs:[...DEF_STRUCTS],outfits:[...DEF_OUTFITS],structureSlots:DEF_SSLOTS,outfitSlots:DEF_OSLOTS}]);
     setIdx(profiles.length);
     setNewName("");
   };
@@ -332,7 +342,6 @@ export default function App() {
   const availO  = OUTFITS.filter(o=>p.outfits.includes(o.id));
   const sSlots  = p.structureSlots ?? DEF_SSLOTS;
   const oSlots  = p.outfitSlots    ?? DEF_OSLOTS;
-  const prices  = {...DEF_PRICES, ...(p.prices||{})};
   const fullSlots = sSlots===3 && oSlots===3;
   const W = computeWeights(prices, p.innate, fullSlots);
 
