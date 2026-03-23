@@ -166,7 +166,7 @@ function ResultCard({r, rank, innate}) {
 
   const badges = [];
   if (rank===0) badges.push({txt:"★ OPTIMAL", col:GOLD});
-  if (!capHit) badges.push({txt:`⚠ [Special] Crafting Cost ${spCostEff}%/10%`, col:"#e06060"});
+
   if (totalWaste>0) badges.push({txt:`⚠ ${totalWaste}% wasted`, col:"#e09040"});
   if (capHit && totalWaste===0) badges.push({txt:"✓ No waste", col:"#60c060"});
 
