@@ -8,6 +8,7 @@ const STRUCTURES = [
   { id:"divine",  name:"Divine Protection",       acq:"42 Masterpieces",     bonuses:{generalCost:1, specialEnergy:2} },
   { id:"night",   name:"Night of Great Journey",  acq:"Limited/Shop",        bonuses:{generalGSC:2, generalTime:1} },
   { id:"luterra", name:"Luterra King Statue",     acq:"90% E.Luterra Tome",  bonuses:{specialGSC:1, specialEnergy:3} },
+  { id:"worldtree", name:"World Tree Leaves",    acq:"World Tree Leaves",   bonuses:{generalTime:2, generalGSC:1} },
 
 ];
 
