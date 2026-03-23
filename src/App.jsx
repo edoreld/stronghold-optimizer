@@ -67,10 +67,14 @@ function effOf(tot) {
   return e;
 }
 
-function scoreCombo(structs, outfits, innate) {
+function scoreCombo(structs, outfits, innate, sSlots, oSlots) {
   const tot = calcTotals(structs, outfits, innate);
   const e = effOf(tot), ei = effOf(innate);
-  return Object.entries(W).reduce((s,[k,w])=>s+((e[k]||0)-(ei[k]||0))*w, 0);
+  const fullSlots = sSlots === 3 && oSlots === 3;
+  return Object.entries(W).reduce((s,[k,w]) => {
+    if ((k === "specialEnergy" || k === "generalEnergy") && !fullSlots) return s;
+    return s + ((e[k]||0) - (ei[k]||0)) * w;
+  }, 0);
 }
 
 function optimize(availS, availO, innate, sSlots, oSlots, n=3) {
@@ -80,7 +84,7 @@ function optimize(availS, availO, innate, sSlots, oSlots, n=3) {
   const sc = combos(availS, sk), oc = combos(availO, ok);
   const all = [];
   for (const s of sc) for (const o of oc)
-    all.push({structs:s, outfits:o, score:scoreCombo(s,o,innate)});
+    all.push({structs:s, outfits:o, score:scoreCombo(s,o,innate,sk,ok)});
   return all.sort((a,b)=>b.score-a.score).slice(0,n).map(r=>({
     ...r, tot:calcTotals(r.structs, r.outfits, innate)
   }));
