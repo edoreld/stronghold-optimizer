@@ -8,7 +8,8 @@ const STRUCTURES = [
   { id:"divine",  name:"Divine Protection",       acq:"42 Masterpieces",     bonuses:{generalCost:1, specialEnergy:2} },
   { id:"night",   name:"Night of Great Journey",  acq:"Limited/Shop",        bonuses:{generalGSC:2, generalTime:1} },
   { id:"luterra", name:"Luterra King Statue",     acq:"90% E.Luterra Tome",  bonuses:{specialGSC:1, specialEnergy:3} },
-  { id:"worldtree", name:"World Tree Leaves",    acq:"World Tree Leaves",   bonuses:{generalTime:2, generalGSC:1} },
+  { id:"worldtree",  name:"World Tree Leaves",               acq:"World Tree Leaves", bonuses:{generalTime:2, generalGSC:1} },
+  { id:"acrobatweapon", name:"Acrobat's Weapon Display Rack", acq:"Shop/Event",        bonuses:{specialEnergy:4, specialGSC:2} },
 
 ];
 
@@ -220,7 +221,7 @@ const DEF_INNATE = {
   specialCost:0, generalCost:4, specialEnergy:3, specialTime:3,
   generalEnergy:0, generalTime:6, specialGSC:0, generalGSC:3,
 };
-const DEF_STRUCTS = ["acrobat","sheep","cards","divine","luterra","cannon"];
+const DEF_STRUCTS = ["acrobat","sheep","cards","divine","luterra","worldtree","acrobatweapon"];
 const DEF_OUTFITS = ["payla","thirain","nia","nineveh"];
 const DEF_SSLOTS = 3;
 const DEF_OSLOTS = 3;
