@@ -41,7 +41,7 @@ const STATS = {
 const fmtBonus = (k, v) => `${STATS[k]?.positive ? "+" : "-"}${v}%`;
 
 const W = {
-  specialCost:100, specialEnergy:35, generalCost:22,
+  specialCost:22, specialEnergy:35, generalCost:22,
   generalEnergy:14, specialTime:8,   generalTime:4,
   specialGSC:4,     generalGSC:3,
 };
