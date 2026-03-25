@@ -13,10 +13,10 @@ const STRUCTURES = [
 ];
 
 const OUTFITS = [
-  { id:"payla",   name:"Payla - Vern Ball",           bonuses:{specialCost:2, specialGSC:4} },
-  { id:"thirain", name:"Thirain - Irresistible Heir",  bonuses:{generalCost:1, generalTime:2} },
-  { id:"nia",     name:"Nia - Basic Outfit",           bonuses:{specialCost:1} },
-  { id:"nineveh", name:"Nineveh - Cute Maid",          bonuses:{generalGSC:2, generalTime:1} },
+  { id:"payla",   name:"Payla - Vern Ball",          bonuses:{specialCost:2, specialGSC:4} },
+  { id:"thirain", name:"Thirain - Irresistible Heir", bonuses:{generalCost:1, generalTime:2} },
+  { id:"nia",     name:"Nia - Basic Outfit",          bonuses:{specialCost:1} },
+  { id:"nineveh", name:"Nineveh - Cute Maid",         bonuses:{generalGSC:2, generalTime:1} },
 ];
 
 const CAPS = {
@@ -35,134 +35,177 @@ const STATS = {
   generalEnergy:{label:"Crafting Action Energy",                       color:"#4890bf", pri:8, positive:false},
 };
 
-const fmtBonus = (k, v) => (STATS[k]?.positive ? "+" : "-") + v + "%";
+const PET_STATS    = ["specialEnergy","specialGSC","specialTime"];
+const INNATE_STATS = Object.keys(STATS).filter(s => !PET_STATS.includes(s));
 
-const BASE_FEE = 400;
-const BASE_ENERGY = 288;
+function fmtBonus(k, v) { return (STATS[k] && STATS[k].positive ? "+" : "-") + v + "%"; }
+function step(v, delta) { return Math.max(0, Math.round((v + delta) * 2) / 2); }
+
+const BASE_FEE     = 400;
+const BASE_ENERGY  = 288;
 const DAILY_ENERGY = 17503;
-const ABIDOS_PER_CRAFT = 10;
-const BASE_GSC = 0.05;
+const ABIDOS_PER   = 10;
+const BASE_GSC     = 0.05;
+
+function materialCostFn(prices) {
+  return (33 / 100 * prices.abidosTimberPrice)
+       + (45 / 100 * prices.tenderPrice)
+       + (86 / 100 * prices.timberPrice);
+}
 
 function computeWeights(prices, innate, fullSlots) {
-  const { abidosPrice, timberPrice, tenderPrice, abidosTimberPrice } = prices;
-  const materialCost = (33/100*abidosTimberPrice) + (45/100*tenderPrice) + (86/100*timberPrice);
-  const innateEnergyRed = (innate.specialEnergy||0) / 100;
-  const innateCostRed   = (innate.generalCost||0)   / 100;
-  const baselineEnergy  = BASE_ENERGY * (1 - innateEnergyRed);
-  const baselineFee     = BASE_FEE    * (1 - innateCostRed);
-  const dailyCrafts     = DAILY_ENERGY / baselineEnergy;
-  const profitPerCraft  = ABIDOS_PER_CRAFT * abidosPrice - materialCost - baselineFee;
-  const costWeight      = BASE_FEE * 0.01 * dailyCrafts;
-  const extraCrafts     = DAILY_ENERGY / (baselineEnergy * 0.99) - dailyCrafts;
-  const energyWeight    = fullSlots ? Math.max(0, extraCrafts * profitPerCraft) : 0;
-  const gscWeight       = BASE_GSC * 0.01 * ABIDOS_PER_CRAFT * abidosPrice * dailyCrafts;
+  var mat           = materialCostFn(prices);
+  var innateEner    = (innate.specialEnergy || 0) / 100;
+  var innateCost    = (innate.generalCost   || 0) / 100;
+  var baseEner      = BASE_ENERGY * (1 - innateEner);
+  var baseFee       = BASE_FEE    * (1 - innateCost);
+  var dailyCrafts   = DAILY_ENERGY / baseEner;
+  var profitPerCraft= ABIDOS_PER * prices.abidosPrice - mat - baseFee;
+  var costW         = BASE_FEE * 0.01 * dailyCrafts;
+  var extraCrafts   = DAILY_ENERGY / (baseEner * 0.99) - dailyCrafts;
+  var energyW       = fullSlots ? Math.max(0, extraCrafts * profitPerCraft) : 0;
+  var gscW          = BASE_GSC * 0.01 * ABIDOS_PER * prices.abidosPrice * dailyCrafts;
   return {
-    specialCost:   Math.max(1, costWeight),
-    generalCost:   Math.max(1, costWeight),
-    specialEnergy: Math.max(0, energyWeight),
+    specialCost:   Math.max(1, costW),
+    generalCost:   Math.max(1, costW),
+    specialEnergy: Math.max(0, energyW),
     generalEnergy: 0,
     specialTime:   2,
     generalTime:   2,
-    specialGSC:    Math.max(1, gscWeight),
-    generalGSC:    Math.max(1, gscWeight),
+    specialGSC:    Math.max(1, gscW),
+    generalGSC:    Math.max(1, gscW),
   };
 }
 
 function combos(arr, k) {
   if (k <= 0) return [[]];
   if (arr.length === 0) return [];
-  const [h, ...t] = arr;
-  return [...combos(t, k-1).map(c => [h, ...c]), ...combos(t, k)];
+  var h = arr[0], t = arr.slice(1);
+  return combos(t, k-1).map(function(c){ return [h].concat(c); }).concat(combos(t, k));
 }
 
 function calcTotals(structs, outfits, innate) {
-  const t = {...innate};
-  for (const it of [...structs, ...outfits])
-    for (const [k, v] of Object.entries(it.bonuses))
-      t[k] = (t[k]||0) + v;
+  var t = Object.assign({}, innate);
+  structs.concat(outfits).forEach(function(it) {
+    Object.keys(it.bonuses).forEach(function(k) {
+      t[k] = (t[k] || 0) + it.bonuses[k];
+    });
+  });
   return t;
 }
 
 function effOf(tot) {
-  const e = {};
-  for (const [k, v] of Object.entries(tot)) e[k] = Math.min(v, CAPS[k]??v);
+  var e = {};
+  Object.keys(tot).forEach(function(k) {
+    e[k] = Math.min(tot[k], CAPS[k] !== undefined ? CAPS[k] : tot[k]);
+  });
   return e;
 }
 
 function scoreCombo(structs, outfits, innate, sSlots, oSlots, prices) {
-  const tot = calcTotals(structs, outfits, innate);
-  const e = effOf(tot), ei = effOf(innate);
-  const fullSlots = sSlots === 3 && oSlots === 3;
-  const W = computeWeights(prices, innate, fullSlots);
-  return Object.entries(W).reduce((s, [k, w]) => s + ((e[k]||0) - (ei[k]||0)) * w, 0);
+  var tot = calcTotals(structs, outfits, innate);
+  var e = effOf(tot), ei = effOf(innate);
+  var full = sSlots === 3 && oSlots === 3;
+  var W = computeWeights(prices, innate, full);
+  return Object.keys(W).reduce(function(s, k) {
+    return s + ((e[k] || 0) - (ei[k] || 0)) * W[k];
+  }, 0);
 }
 
-function optimize(availS, availO, innate, sSlots, oSlots, prices, n=3) {
-  const sk = Math.min(sSlots, availS.length), ok = Math.min(oSlots, availO.length);
+function optimize(availS, availO, innate, sSlots, oSlots, prices, n) {
+  n = n || 3;
+  var sk = Math.min(sSlots, availS.length), ok = Math.min(oSlots, availO.length);
   if (sk === 0 || ok === 0) return [];
-  const sc = combos(availS, sk), oc = combos(availO, ok);
-  const all = [];
-  for (const s of sc) for (const o of oc)
-    all.push({ structs:s, outfits:o, score:scoreCombo(s, o, innate, sSlots, oSlots, prices) });
-  return all.sort((a, b) => b.score - a.score).slice(0, n).map(r => ({
-    ...r, tot: calcTotals(r.structs, r.outfits, innate)
-  }));
+  var sc = combos(availS, sk), oc = combos(availO, ok), all = [];
+  sc.forEach(function(s) {
+    oc.forEach(function(o) {
+      all.push({ structs:s, outfits:o, score:scoreCombo(s, o, innate, sSlots, oSlots, prices) });
+    });
+  });
+  return all.sort(function(a,b){ return b.score - a.score; }).slice(0, n).map(function(r) {
+    return Object.assign({}, r, { tot: calcTotals(r.structs, r.outfits, innate) });
+  });
 }
 
-// ── Styles ────────────────────────────────────────────────────────────
-const BG="#0a1520", PANEL="#111d2b", BORDER="#1e3050", TEXT="#c8d4e0", DIM="#5a7a90", GOLD="#f0a500";
+function calcProfileProfit(profile, prices) {
+  var p = profile;
+  var sSlots = p.structureSlots || 3, oSlots = p.outfitSlots || 3;
+  var availS = STRUCTURES.filter(function(s){ return p.structs.indexOf(s.id) >= 0; });
+  var availO = OUTFITS.filter(function(o){ return p.outfits.indexOf(o.id) >= 0; });
+  var results = optimize(availS, availO, p.innate, sSlots, oSlots, prices, 1);
+  if (!results.length) return null;
+  var tot = results[0].tot;
+  var effSpCost  = Math.min(tot.specialCost  || 0, 10);
+  var effGenCost = Math.min(tot.generalCost  || 0, 30);
+  var effEnergy  = Math.min(tot.specialEnergy|| 0, 10);
+  var reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost) / 100);
+  var reducedEnergy = BASE_ENERGY * (1 - effEnergy / 100);
+  var dailyCrafts   = DAILY_ENERGY / reducedEnergy;
+  var mat           = materialCostFn(prices);
+  var ppc           = ABIDOS_PER * prices.abidosPrice - mat - reducedFee;
+  return { daily: dailyCrafts * ppc, dailyCrafts: dailyCrafts, ppc: ppc, combo: results[0] };
+}
 
-const btnStyle = (active, danger=false) => ({
-  background: danger ? "#2a0d0d" : active ? "#1e4070" : "#0d1825",
-  color:      danger ? "#e06060" : active ? "#c8e4ff" : DIM,
-  border:    `1px solid ${danger ? "#6a2020" : active ? "#2d6aad" : BORDER}`,
-  borderRadius:5, padding:"4px 12px", cursor:"pointer", fontSize:12, fontFamily:"inherit",
-});
+// ── Styles ──────────────────────────────────────────────────────────
+var BG="#0a1520", PANEL="#111d2b", BORDER="#1e3050", TEXT="#c8d4e0", DIM="#5a7a90", GOLD="#f0a500";
 
-const panelStyle = { background:PANEL, border:`1px solid ${BORDER}`, borderRadius:8, padding:14, marginBottom:12 };
+function btnStyle(active, danger) {
+  return {
+    background: danger ? "#2a0d0d" : active ? "#1e4070" : "#0d1825",
+    color:      danger ? "#e06060" : active ? "#c8e4ff" : DIM,
+    border:     "1px solid " + (danger ? "#6a2020" : active ? "#2d6aad" : BORDER),
+    borderRadius:5, padding:"4px 12px", cursor:"pointer", fontSize:12, fontFamily:"inherit",
+  };
+}
 
-const inputStyle = {
-  background:"#0d1825", border:`1px solid ${BORDER}`, color:TEXT,
+var panelStyle = { background:PANEL, border:"1px solid "+BORDER, borderRadius:8, padding:14, marginBottom:12 };
+
+var inputStyle = {
+  background:"#0d1825", border:"1px solid "+BORDER, color:TEXT,
   borderRadius:4, padding:"3px 8px", fontSize:12, fontFamily:"inherit", width:90, textAlign:"right",
 };
 
 // ── Sub-components ────────────────────────────────────────────────────
-function Checkbox({ checked, onChange, color="#2d6aad" }) {
+function Checkbox(props) {
+  var color = props.color || "#2d6aad";
   return (
-    <div onClick={onChange} style={{
-      width:15, height:15, border:`1.5px solid ${checked ? color : "#2a4060"}`,
-      borderRadius:3, background:checked ? color : "transparent",
+    <div onClick={props.onChange} style={{
+      width:15, height:15, border:"1.5px solid "+(props.checked ? color : "#2a4060"),
+      borderRadius:3, background:props.checked ? color : "transparent",
       cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
     }}>
-      {checked && <span style={{color:"#fff", fontSize:10, lineHeight:1}}>&#10003;</span>}
+      {props.checked && <span style={{color:"#fff", fontSize:10, lineHeight:1}}>&#10003;</span>}
     </div>
   );
 }
 
-function SlotPicker({ label, value, max=3, options=null, onChange }) {
-  const opts = options || Array.from({length:max}, (_,i) => i+1);
+function SlotPicker(props) {
+  var max = props.max || 3;
+  var opts = props.options || Array.from({length:max}, function(_,i){ return i+1; });
   return (
     <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
-      <span style={{fontSize:12, color:TEXT}}>{label}</span>
+      <span style={{fontSize:12, color:TEXT}}>{props.label}</span>
       <div style={{display:"flex", gap:4}}>
-        {opts.map(n => (
-          <button key={n} onClick={() => onChange(n)}
-            style={{...btnStyle(value===n), padding:"3px 10px", fontSize:12, minWidth:32}}>
-            {n}
-          </button>
-        ))}
+        {opts.map(function(n) {
+          return (
+            <button key={n} onClick={function(){ props.onChange(n); }}
+              style={Object.assign({}, btnStyle(props.value===n), {padding:"3px 10px", fontSize:12, minWidth:32})}>
+              {n}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function PriceInput({ label, value, onChange }) {
+function PriceInput(props) {
   return (
     <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
-      <span style={{fontSize:11, color:DIM}}>{label}</span>
+      <span style={{fontSize:11, color:DIM}}>{props.label}</span>
       <div style={{display:"flex", alignItems:"center", gap:4}}>
-        <input type="number" min="0" value={value}
-          onChange={e => onChange(Math.max(0, parseInt(e.target.value)||0))}
+        <input type="number" min="0" value={props.value}
+          onChange={function(e){ props.onChange(Math.max(0, parseInt(e.target.value)||0)); }}
           style={inputStyle}/>
         <span style={{fontSize:11, color:DIM, width:12}}>g</span>
       </div>
@@ -170,17 +213,37 @@ function PriceInput({ label, value, onChange }) {
   );
 }
 
-function StatBar({ stat, rawTotal=0, innateVal=0 }) {
-  const cap  = CAPS[stat]||100;
-  const meta = STATS[stat]||{label:stat, color:"#888", positive:false};
-  const effTotal  = Math.min(rawTotal, cap);
-  const effInnate = Math.min(innateVal, cap);
-  const equipGain = Math.max(0, effTotal - effInnate);
-  const waste     = rawTotal - effTotal;
-  const pctInnate = (effInnate / cap) * 100;
-  const pctEquip  = (equipGain / cap) * 100;
-  const atCap     = effTotal >= cap;
-  const sign      = meta.positive ? "+" : "-";
+function StatCounter(props) {
+  var stat = props.stat, v = props.value, cap = CAPS[stat];
+  var capped = cap && v >= cap;
+  return (
+    <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+      <span style={{fontSize:11, color: capped ? "#e08050" : DIM}}>
+        {STATS[stat].label}{capped ? " !" : ""}
+      </span>
+      <div style={{display:"flex", alignItems:"center", gap:4, flexShrink:0}}>
+        <button onClick={function(){ props.onChange(step(v, -0.5)); }}
+          style={Object.assign({}, btnStyle(false), {padding:"1px 6px", fontSize:13})}>-</button>
+        <span style={{width:36, textAlign:"center", fontSize:13, color: capped ? "#e08050" : TEXT}}>{v}%</span>
+        <button onClick={function(){ props.onChange(step(v, 0.5)); }}
+          style={Object.assign({}, btnStyle(false), {padding:"1px 6px", fontSize:13})}>+</button>
+      </div>
+    </div>
+  );
+}
+
+function StatBar(props) {
+  var stat = props.stat, rawTotal = props.rawTotal || 0, innateVal = props.innateVal || 0;
+  var cap      = CAPS[stat] || 100;
+  var meta     = STATS[stat] || {label:stat, color:"#888", positive:false};
+  var effTotal  = Math.min(rawTotal, cap);
+  var effInnate = Math.min(innateVal, cap);
+  var equipGain = Math.max(0, effTotal - effInnate);
+  var waste     = rawTotal - effTotal;
+  var pctInnate = (effInnate / cap) * 100;
+  var pctEquip  = (equipGain / cap) * 100;
+  var atCap     = effTotal >= cap;
+  var sign      = meta.positive ? "+" : "-";
   return (
     <div style={{marginBottom:6}}>
       <div style={{display:"flex", justifyContent:"space-between", fontSize:11, color:DIM, marginBottom:2}}>
@@ -197,431 +260,357 @@ function StatBar({ stat, rawTotal=0, innateVal=0 }) {
   );
 }
 
-function ResultCard({ r, rank, innate }) {
-  const activeStats = Object.keys(STATS)
-    .filter(s => (r.tot[s]||0) > 0 || (innate[s]||0) > 0)
-    .sort((a, b) => (STATS[a]?.pri||9) - (STATS[b]?.pri||9));
-  const totalWaste = Object.entries(r.tot).reduce((s,[k,v]) => s + Math.max(0, v-(CAPS[k]??v)), 0);
-  const badges = [];
-  if (rank === 0) badges.push({txt:"* OPTIMAL", col:GOLD});
-  if (totalWaste > 0) badges.push({txt:"(" + totalWaste + "% wasted)", col:"#e09040"});
-  if (totalWaste === 0) badges.push({txt:"No waste", col:"#60c060"});
+function ResultCard(props) {
+  var r = props.r, rank = props.rank, innate = props.innate;
+  var activeStats = Object.keys(STATS)
+    .filter(function(s){ return (r.tot[s]||0) > 0 || (innate[s]||0) > 0; })
+    .sort(function(a,b){ return (STATS[a].pri||9) - (STATS[b].pri||9); });
+  var totalWaste = Object.keys(r.tot).reduce(function(s,k){
+    var cap = CAPS[k]; return s + (cap ? Math.max(0, r.tot[k] - cap) : 0);
+  }, 0);
+  var badges = [];
+  if (rank === 0) badges.push({txt:"OPTIMAL", col:GOLD});
+  if (totalWaste > 0) badges.push({txt:totalWaste+"% wasted", col:"#e09040"});
+  else badges.push({txt:"No waste", col:"#60c060"});
   return (
-    <div style={{
-      background: rank===0 ? "#121d12" : PANEL,
-      border: `1px solid ${rank===0 ? "#2a5a2a" : BORDER}`,
-      borderRadius:8, padding:14, marginBottom:10,
-    }}>
+    <div style={{background:rank===0?"#121d12":PANEL, border:"1px solid "+(rank===0?"#2a5a2a":BORDER), borderRadius:8, padding:14, marginBottom:10}}>
       <div style={{display:"flex", alignItems:"center", gap:7, marginBottom:11, flexWrap:"wrap"}}>
-        <span style={{background:rank===0?"#205a20":"#1a3a5a", color:"#fff", borderRadius:4, padding:"2px 9px", fontSize:11, fontWeight:"bold"}}>
-          #{rank+1}
-        </span>
-        {badges.map((b,i) => <span key={i} style={{fontSize:11, color:b.col}}>{b.txt}</span>)}
+        <span style={{background:rank===0?"#205a20":"#1a3a5a", color:"#fff", borderRadius:4, padding:"2px 9px", fontSize:11, fontWeight:"bold"}}>#{rank+1}</span>
+        {badges.map(function(b,i){ return <span key={i} style={{fontSize:11, color:b.col}}>{b.txt}</span>; })}
         <span style={{marginLeft:"auto", fontSize:11, color:DIM}}>score {r.score.toFixed(0)}</span>
       </div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:11}}>
         <div>
           <div style={{fontSize:10, color:"#5ba4cf", fontWeight:"bold", letterSpacing:1, marginBottom:5}}>STRUCTURES</div>
-          {r.structs.map(s => (
-            <div key={s.id} style={{marginBottom:4, textAlign:"left"}}>
-              <span style={{fontSize:12, color:TEXT}}>- {s.name}</span>
-              <div style={{fontSize:10, color:"#3a5a6a", marginLeft:8}}>
-                {Object.entries(s.bonuses).map(([k,v]) => (STATS[k]?.label||k) + " " + fmtBonus(k,v)).join("  /  ")}
+          {r.structs.map(function(s){
+            return (
+              <div key={s.id} style={{marginBottom:4}}>
+                <span style={{fontSize:12, color:TEXT}}>- {s.name}</span>
+                <div style={{fontSize:10, color:"#3a5a6a", marginLeft:8}}>
+                  {Object.keys(s.bonuses).map(function(k){ return (STATS[k]?STATS[k].label:k)+" "+fmtBonus(k,s.bonuses[k]); }).join("  /  ")}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div>
           <div style={{fontSize:10, color:"#cf9a5b", fontWeight:"bold", letterSpacing:1, marginBottom:5}}>OUTFITS</div>
-          {r.outfits.map(o => (
-            <div key={o.id} style={{marginBottom:4, textAlign:"left"}}>
-              <span style={{fontSize:12, color:TEXT}}>- {o.name}</span>
-              <div style={{fontSize:10, color:"#3a5a6a", marginLeft:8}}>
-                {Object.entries(o.bonuses).map(([k,v]) => (STATS[k]?.label||k) + " " + fmtBonus(k,v)).join("  /  ")}
+          {r.outfits.map(function(o){
+            return (
+              <div key={o.id} style={{marginBottom:4}}>
+                <span style={{fontSize:12, color:TEXT}}>- {o.name}</span>
+                <div style={{fontSize:10, color:"#3a5a6a", marginLeft:8}}>
+                  {Object.keys(o.bonuses).map(function(k){ return (STATS[k]?STATS[k].label:k)+" "+fmtBonus(k,o.bonuses[k]); }).join("  /  ")}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
-      <div style={{borderTop:`1px solid ${BORDER}`, paddingTop:8}}>
-        {activeStats.map(s => <StatBar key={s} stat={s} rawTotal={r.tot[s]||0} innateVal={innate[s]||0}/>)}
+      <div style={{borderTop:"1px solid "+BORDER, paddingTop:8}}>
+        {activeStats.map(function(s){ return <StatBar key={s} stat={s} rawTotal={r.tot[s]||0} innateVal={innate[s]||0}/>; })}
       </div>
     </div>
   );
 }
 
-function calcProfileProfit(profile, prices) {
-  const p = profile;
-  const sSlots = p.structureSlots ?? 3;
-  const oSlots = p.outfitSlots    ?? 3;
-  const availS = STRUCTURES.filter(s => p.structs.includes(s.id));
-  const availO = OUTFITS.filter(o => p.outfits.includes(o.id));
-  const results = optimize(availS, availO, p.innate, sSlots, oSlots, prices, 1);
-  if (!results.length) return null;
-  const tot        = results[0].tot;
-  const effSpCost  = Math.min((tot.specialCost||0),  10);
-  const effGenCost = Math.min((tot.generalCost||0),  30);
-  const effEnergy  = Math.min((tot.specialEnergy||0),10);
-  const reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost) / 100);
-  const reducedEnergy = BASE_ENERGY * (1 - effEnergy / 100);
-  const dailyCrafts   = DAILY_ENERGY / reducedEnergy;
-  const materialCost  = (33/100*prices.abidosTimberPrice) + (45/100*prices.tenderPrice) + (86/100*prices.timberPrice);
-  const ppc           = ABIDOS_PER_CRAFT * prices.abidosPrice - materialCost - reducedFee;
-  const daily         = dailyCrafts * ppc;
-  return { daily, dailyCrafts, ppc, combo: results[0] };
-}
-
-function SummaryTab({ profiles, prices }) {
-  const rows = profiles.map(p => ({
-    name: p.name,
-    ...calcProfileProfit(p, prices),
-  }));
-  const totalDaily   = rows.reduce((s, r) => s + (r.daily||0), 0);
-  const totalMonthly = totalDaily * 30;
-  const totalYearly  = totalDaily * 365;
-
-  const goldColor = v => v >= 0 ? "#60c060" : "#e06060";
-  const fmt = v => Math.round(v).toLocaleString() + "g";
-
+function SummaryTab(props) {
+  var profiles = props.profiles, prices = props.prices;
+  var rows = profiles.map(function(p){
+    return Object.assign({name:p.name}, calcProfileProfit(p, prices));
+  });
+  var totalDaily   = rows.reduce(function(s,r){ return s + (r.daily||0); }, 0);
+  var totalMonthly = totalDaily * 30;
+  var totalYearly  = totalDaily * 365;
+  function goldColor(v){ return v >= 0 ? "#60c060" : "#e06060"; }
+  function fmt(v){ return Math.round(v).toLocaleString()+"g"; }
   return (
     <div>
-      {/* Per-profile table */}
       <div style={panelStyle}>
         <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>PER PROFILE</div>
-        <div style={{display:"grid", gridTemplateColumns:"1fr repeat(4, auto)", gap:"6px 18px", alignItems:"baseline"}}>
-          {/* Header */}
-          {["Profile","Crafts/day","Profit/craft","Daily profit",""].map((h,i) => (
-            <div key={i} style={{fontSize:10, color:DIM, fontWeight:"bold", borderBottom:`1px solid ${BORDER}`, paddingBottom:4}}>{h}</div>
-          ))}
-          {rows.map((r, i) => r.daily == null ? (
-            <React.Fragment key={i}>
-              <div style={{fontSize:12, color:TEXT}}>{r.name}</div>
-              <div style={{fontSize:11, color:"#e06060", gridColumn:"span 4"}}>No items enabled</div>
-            </React.Fragment>
-          ) : (
-            <React.Fragment key={i}>
-              <div style={{fontSize:12, color:TEXT, fontWeight:"600"}}>{r.name}</div>
-              <div style={{fontSize:12, color:TEXT, textAlign:"right"}}>{r.dailyCrafts.toFixed(1)}</div>
-              <div style={{fontSize:12, color:goldColor(r.ppc), textAlign:"right"}}>{fmt(r.ppc)}</div>
-              <div style={{fontSize:12, color:goldColor(r.daily), textAlign:"right", fontWeight:"bold"}}>{fmt(r.daily)}</div>
-              <div style={{fontSize:10, color:DIM}}>
-                {r.combo.structs.map(s=>s.name).join(", ")} / {r.combo.outfits.map(o=>o.name).join(", ")}
-              </div>
-            </React.Fragment>
-          ))}
+        <div style={{display:"grid", gridTemplateColumns:"1fr repeat(3, auto)", gap:"6px 18px", alignItems:"baseline"}}>
+          {["Profile","Crafts/day","Profit/craft","Daily profit"].map(function(h,i){
+            return <div key={i} style={{fontSize:10, color:DIM, fontWeight:"bold", borderBottom:"1px solid "+BORDER, paddingBottom:4}}>{h}</div>;
+          })}
+          {rows.map(function(r,i){
+            if (!r.daily && r.daily !== 0) return (
+              <React.Fragment key={i}>
+                <div style={{fontSize:12, color:TEXT}}>{r.name}</div>
+                <div style={{fontSize:11, color:"#e06060", gridColumn:"span 3"}}>No items enabled</div>
+              </React.Fragment>
+            );
+            return (
+              <React.Fragment key={i}>
+                <div style={{fontSize:12, color:TEXT, fontWeight:"600"}}>{r.name}</div>
+                <div style={{fontSize:12, color:TEXT, textAlign:"right"}}>{r.dailyCrafts.toFixed(1)}</div>
+                <div style={{fontSize:12, color:goldColor(r.ppc), textAlign:"right"}}>{fmt(r.ppc)}</div>
+                <div style={{fontSize:12, color:goldColor(r.daily), textAlign:"right", fontWeight:"bold"}}>{fmt(r.daily)}</div>
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
-
-      {/* Totals */}
       <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12}}>
         {[
           {label:"Daily",   value:totalDaily},
-          {label:"Monthly", value:totalMonthly, sub:"(x30 days)"},
-          {label:"Yearly",  value:totalYearly,  sub:"(x365 days)"},
-        ].map(({label, value, sub}) => (
-          <div key={label} style={{...panelStyle, textAlign:"center", marginBottom:0}}>
-            <div style={{fontSize:11, color:DIM, marginBottom:4}}>{label} {sub && <span style={{fontSize:10}}>{sub}</span>}</div>
-            <div style={{fontSize:26, fontWeight:"bold", color:goldColor(value)}}>{fmt(value)}</div>
-          </div>
-        ))}
+          {label:"Monthly", value:totalMonthly, sub:"x30 days"},
+          {label:"Yearly",  value:totalYearly,  sub:"x365 days"},
+        ].map(function(item){
+          return (
+            <div key={item.label} style={Object.assign({}, panelStyle, {textAlign:"center", marginBottom:0})}>
+              <div style={{fontSize:11, color:DIM, marginBottom:4}}>{item.label}{item.sub ? " ("+item.sub+")" : ""}</div>
+              <div style={{fontSize:26, fontWeight:"bold", color:goldColor(item.value)}}>{fmt(item.value)}</div>
+            </div>
+          );
+        })}
       </div>
-
       <div style={{fontSize:10, color:DIM, marginTop:10, textAlign:"center"}}>
-        Based on current market prices and each profile's #1 optimal combo. Update prices in Configuration.
+        Based on current market prices and each profile's optimal combo.
       </div>
     </div>
   );
 }
 
 // ── Defaults & persistence ────────────────────────────────────────────
-const DEF_INNATE     = {specialEnergy:3, specialGSC:0, specialCost:0, specialTime:3, generalGSC:3, generalTime:6, generalCost:4, generalEnergy:0};
-const DEF_STRUCTS    = ["acrobat","sheep","cards","divine","luterra","worldtree","acrobatweapon"];
-const DEF_OUTFITS    = ["payla","thirain","nia","nineveh"];
-const DEF_PRICES     = {abidosPrice:150, timberPrice:155, tenderPrice:309, abidosTimberPrice:2049};
-const DEF_SSLOTS     = 3, DEF_OSLOTS = 3, DEF_CRAFT_SLOTS = 4;
-const LS_KEY         = "stronghold-optimizer-profiles";
-const LS_IDX         = "stronghold-optimizer-idx";
-const LS_PRICES      = "stronghold-optimizer-prices";
+var DEF_INNATE     = {specialEnergy:3, specialGSC:0, specialCost:0, specialTime:3, generalGSC:3, generalTime:6, generalCost:4, generalEnergy:0};
+var DEF_STRUCTS    = ["acrobat","sheep","cards","divine","luterra","worldtree","acrobatweapon"];
+var DEF_OUTFITS    = ["payla","thirain","nia","nineveh"];
+var DEF_PRICES     = {abidosPrice:150, timberPrice:155, tenderPrice:309, abidosTimberPrice:2049};
+var DEF_SSLOTS     = 3, DEF_OSLOTS = 3, DEF_CRAFT_SLOTS = 4;
+var LS_KEY         = "stronghold-optimizer-profiles";
+var LS_IDX         = "stronghold-optimizer-idx";
+var LS_PRICES      = "stronghold-optimizer-prices";
 
 function loadProfiles() {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    var raw = localStorage.getItem(LS_KEY);
     if (raw) {
-      const p = JSON.parse(raw);
-      if (p?.length) return p.map(x => ({
-        structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS, ...x,
-      }));
+      var p = JSON.parse(raw);
+      if (p && p.length) return p.map(function(x){
+        return Object.assign({structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}, x);
+      });
     }
-  } catch {}
-  return [{id:1, name:"Main", innate:{...DEF_INNATE}, structs:[...DEF_STRUCTS], outfits:[...DEF_OUTFITS], structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}];
+  } catch(e) {}
+  return [{id:1, name:"Main", innate:Object.assign({},DEF_INNATE), structs:DEF_STRUCTS.slice(), outfits:DEF_OUTFITS.slice(), structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}];
 }
 
 function loadIdx(profiles) {
-  try { const i = parseInt(localStorage.getItem(LS_IDX)||"0"); return Math.min(i, profiles.length-1); } catch {}
+  try { var i = parseInt(localStorage.getItem(LS_IDX)||"0"); return Math.min(i, profiles.length-1); } catch(e) {}
   return 0;
 }
 
 function loadPrices() {
-  try {
-    const raw = localStorage.getItem(LS_PRICES);
-    if (raw) return {...DEF_PRICES, ...JSON.parse(raw)};
-  } catch {}
-  return {...DEF_PRICES};
+  try { var raw = localStorage.getItem(LS_PRICES); if(raw) return Object.assign({},DEF_PRICES,JSON.parse(raw)); } catch(e) {}
+  return Object.assign({},DEF_PRICES);
 }
 
 // ── App ───────────────────────────────────────────────────────────────
 export default function App() {
-  const [profiles, setProfiles] = useState(loadProfiles);
-  const [idx, setIdx]           = useState(() => loadIdx(loadProfiles()));
-  const [prices, setPrices]     = useState(loadPrices);
-  const [tab, setTab]           = useState("opt");
-  const [newName, setNewName]   = useState("");
-  const [editingName, setEditingName] = useState(false);
-  const [nameInput, setNameInput]     = useState("");
+  var profilesInit = loadProfiles();
+  var [profiles, setProfiles] = useState(profilesInit);
+  var [idx, setIdx]           = useState(loadIdx(profilesInit));
+  var [prices, setPrices]     = useState(loadPrices);
+  var [tab, setTab]           = useState("opt");
+  var [newName, setNewName]   = useState("");
+  var [editingName, setEditingName] = useState(false);
+  var [nameInput, setNameInput]     = useState("");
 
-  useEffect(() => { try { localStorage.setItem(LS_KEY,    JSON.stringify(profiles)); } catch {} }, [profiles]);
-  useEffect(() => { try { localStorage.setItem(LS_IDX,    String(idx));              } catch {} }, [idx]);
-  useEffect(() => { try { localStorage.setItem(LS_PRICES, JSON.stringify(prices));   } catch {} }, [prices]);
+  useEffect(function(){ try{localStorage.setItem(LS_KEY,    JSON.stringify(profiles));}catch(e){} }, [profiles]);
+  useEffect(function(){ try{localStorage.setItem(LS_IDX,    String(idx));             }catch(e){} }, [idx]);
+  useEffect(function(){ try{localStorage.setItem(LS_PRICES, JSON.stringify(prices));  }catch(e){} }, [prices]);
 
-  const p    = profiles[idx];
-  const upd  = ch => setProfiles(prev => prev.map((x,i) => i===idx ? {...x,...ch} : x));
-  const togS = id => upd({structs:  p.structs.includes(id)  ? p.structs.filter(x=>x!==id)  : [...p.structs,  id]});
-  const togO = id => upd({outfits:  p.outfits.includes(id)  ? p.outfits.filter(x=>x!==id)  : [...p.outfits, id]});
-  const setIn    = (k,v) => upd({innate:  {...p.innate,  [k]: Math.max(0, parseInt(v)||0)}});
-  const setPrice = (k,v) => setPrices(prev => ({...prev, [k]: v}));
+  var p    = profiles[idx];
+  function upd(ch) { setProfiles(function(prev){ return prev.map(function(x,i){ return i===idx ? Object.assign({},x,ch) : x; }); }); }
+  function togS(id) { upd({structs: p.structs.indexOf(id)>=0 ? p.structs.filter(function(x){return x!==id;}) : p.structs.concat([id])}); }
+  function togO(id) { upd({outfits: p.outfits.indexOf(id)>=0 ? p.outfits.filter(function(x){return x!==id;}) : p.outfits.concat([id])}); }
+  function setIn(k,v)     { upd({innate:  Object.assign({},p.innate,  {[k]:v})}); }
+  function setPrice(k,v)  { setPrices(function(prev){ return Object.assign({},prev,{[k]:v}); }); }
 
-  const addProf = () => {
+  function addProf() {
     if (!newName.trim()) return;
-    setProfiles(prev => [...prev, {
-      id:Date.now(), name:newName.trim(), innate:{...DEF_INNATE},
-      structs:[...DEF_STRUCTS], outfits:[...DEF_OUTFITS],
-      structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS,
-    }]);
+    setProfiles(function(prev){ return prev.concat([{id:Date.now(), name:newName.trim(), innate:Object.assign({},DEF_INNATE), structs:DEF_STRUCTS.slice(), outfits:DEF_OUTFITS.slice(), structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}]); });
     setIdx(profiles.length);
     setNewName("");
-  };
-
-  const delProf = () => {
+  }
+  function delProf() {
     if (profiles.length <= 1) return;
-    setProfiles(prev => prev.filter((_,i) => i!==idx));
+    setProfiles(function(prev){ return prev.filter(function(_,i){ return i!==idx; }); });
     setIdx(Math.max(0, idx-1));
-  };
+  }
+  function renameProf() { if(nameInput.trim()) upd({name:nameInput.trim()}); setEditingName(false); }
 
-  const renameProf = () => {
-    if (nameInput.trim()) upd({name: nameInput.trim()});
-    setEditingName(false);
-  };
+  var availS     = STRUCTURES.filter(function(s){ return p.structs.indexOf(s.id)>=0; });
+  var availO     = OUTFITS.filter(function(o){ return p.outfits.indexOf(o.id)>=0; });
+  var sSlots     = p.structureSlots || DEF_SSLOTS;
+  var oSlots     = p.outfitSlots    || DEF_OSLOTS;
+  var craftSlots = p.craftSlots     || DEF_CRAFT_SLOTS;
+  var fullSlots  = sSlots===3 && oSlots===3;
+  var W          = computeWeights(prices, p.innate, fullSlots);
 
-  const availS     = STRUCTURES.filter(s => p.structs.includes(s.id));
-  const availO     = OUTFITS.filter(o => p.outfits.includes(o.id));
-  const sSlots     = p.structureSlots ?? DEF_SSLOTS;
-  const oSlots     = p.outfitSlots    ?? DEF_OSLOTS;
-  const craftSlots = p.craftSlots     ?? DEF_CRAFT_SLOTS;
-  const fullSlots  = sSlots === 3 && oSlots === 3;
-  const W          = computeWeights(prices, p.innate, fullSlots);
+  var totalCrafts  = craftSlots * 10;
+  var needAbidos   = totalCrafts * 33;
+  var needTender   = totalCrafts * 45;
+  var needTimber   = totalCrafts * 86;
+  var stacksAbidos = Math.ceil(needAbidos / 100);
+  var stacksTender = Math.ceil(needTender  / 100);
+  var stacksTimber = Math.ceil(needTimber  / 100);
+  var shoppingGold = stacksAbidos*prices.abidosTimberPrice + stacksTender*prices.tenderPrice + stacksTimber*prices.timberPrice;
+  var matCost      = materialCostFn(prices);
+  var profitInnate = ABIDOS_PER*prices.abidosPrice - matCost - BASE_FEE*(1-(p.innate.generalCost||0)/100);
 
-  // Shopping list
-  const totalCrafts  = craftSlots * 10;
-  const needAbidos   = totalCrafts * 33;
-  const needTender   = totalCrafts * 45;
-  const needTimber   = totalCrafts * 86;
-  const stacksAbidos = Math.ceil(needAbidos / 100);
-  const stacksTender = Math.ceil(needTender  / 100);
-  const stacksTimber = Math.ceil(needTimber  / 100);
-  const shoppingGold = stacksAbidos * prices.abidosTimberPrice
-                     + stacksTender * prices.tenderPrice
-                     + stacksTimber * prices.timberPrice;
+  var results = useMemo(function(){
+    return optimize(availS, availO, p.innate, sSlots, oSlots, prices);
+  }, [availS.map(function(s){return s.id;}).join(), availO.map(function(o){return o.id;}).join(), JSON.stringify(p.innate), sSlots, oSlots, JSON.stringify(prices)]);
 
-  // Profit calculations
-  const materialCost   = (33/100*prices.abidosTimberPrice) + (45/100*prices.tenderPrice) + (86/100*prices.timberPrice);
-  const profitInnate   = ABIDOS_PER_CRAFT * prices.abidosPrice - materialCost - BASE_FEE * (1-(p.innate.generalCost||0)/100);
-
-  const results = useMemo(() => optimize(availS, availO, p.innate, sSlots, oSlots, prices),
-    // eslint-disable-next-line
-    [availS.map(s=>s.id).join(), availO.map(o=>o.id).join(), JSON.stringify(p.innate), sSlots, oSlots, JSON.stringify(prices)]);
-
-  const optimalProfit = useMemo(() => {
+  var optimalProfit = useMemo(function(){
     if (!results.length) return null;
-    const tot = results[0].tot;
-    const effSpCost  = Math.min((tot.specialCost||0),  10);
-    const effGenCost = Math.min((tot.generalCost||0),  30);
-    const effEnergy  = Math.min((tot.specialEnergy||0),10);
-    const reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost) / 100);
-    const reducedEnergy = BASE_ENERGY * (1 - effEnergy / 100);
-    const dailyCrafts   = DAILY_ENERGY / reducedEnergy;
-    const ppc           = ABIDOS_PER_CRAFT * prices.abidosPrice - materialCost - reducedFee;
-    return { ppc, daily: dailyCrafts * ppc, dailyCrafts };
-    // eslint-disable-next-line
-  }, [results, prices, materialCost]);
+    var tot = results[0].tot;
+    var effSpCost  = Math.min(tot.specialCost  ||0, 10);
+    var effGenCost = Math.min(tot.generalCost  ||0, 30);
+    var effEnergy  = Math.min(tot.specialEnergy||0, 10);
+    var reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost)/100);
+    var reducedEnergy = BASE_ENERGY * (1 - effEnergy/100);
+    var dailyCrafts   = DAILY_ENERGY / reducedEnergy;
+    var ppc           = ABIDOS_PER*prices.abidosPrice - matCost - reducedFee;
+    return {ppc:ppc, daily:dailyCrafts*ppc, dailyCrafts:dailyCrafts};
+  }, [results, JSON.stringify(prices), matCost]);
 
-  const cappedInnate = Object.entries(p.innate).filter(([k,v]) => CAPS[k] && v >= CAPS[k]);
+  var cappedInnate = Object.keys(p.innate).filter(function(k){ return CAPS[k] && p.innate[k] >= CAPS[k]; });
 
-  const rowStyle = {display:"flex", justifyContent:"space-between", alignItems:"baseline", fontSize:11, marginBottom:4};
+  function rowJ(label, val, color) {
+    return (
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"baseline", fontSize:11, marginBottom:4}}>
+        <span style={{color:DIM}}>{label}</span>
+        <span style={{color:color||TEXT}}>{val}</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{background:BG, color:TEXT, minHeight:"100vh", fontFamily:"'Segoe UI',sans-serif", padding:12, fontSize:13}}>
 
-      {/* Header */}
       <div style={{marginBottom:12}}>
         <div style={{fontSize:18, fontWeight:"bold", color:GOLD}}>Stronghold Optimizer</div>
         <div style={{fontSize:11, color:DIM}}>Abidos Fusion Material profit maximizer - Lost Ark T4</div>
       </div>
 
-      {/* Profile bar */}
-      <div style={{...panelStyle, display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", padding:10}}>
+      <div style={Object.assign({},panelStyle,{display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", padding:10})}>
         <span style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1}}>PROFILE</span>
-        {profiles.map((pf,i) => (
-          <button key={pf.id} style={btnStyle(i===idx)} onClick={() => setIdx(i)}>{pf.name}</button>
-        ))}
-        <input value={newName} onChange={e => setNewName(e.target.value)}
-          onKeyDown={e => e.key==="Enter" && addProf()} placeholder="New profile..."
-          style={{background:"#0d1825", border:`1px solid ${BORDER}`, color:TEXT, borderRadius:4, padding:"4px 8px", fontSize:11, width:120, fontFamily:"inherit"}}/>
+        {profiles.map(function(pf,i){
+          return <button key={pf.id} style={btnStyle(i===idx)} onClick={function(){setIdx(i);}}>{pf.name}</button>;
+        })}
+        <input value={newName} onChange={function(e){setNewName(e.target.value);}}
+          onKeyDown={function(e){if(e.key==="Enter")addProf();}} placeholder="New profile..."
+          style={{background:"#0d1825", border:"1px solid "+BORDER, color:TEXT, borderRadius:4, padding:"4px 8px", fontSize:11, width:120, fontFamily:"inherit"}}/>
         <button style={btnStyle(false)} onClick={addProf}>+ Add</button>
-        {profiles.length > 1 && <button style={btnStyle(false, true)} onClick={delProf}>x Delete</button>}
+        {profiles.length > 1 && <button style={btnStyle(false,true)} onClick={delProf}>x Delete</button>}
         {editingName
-          ? <>
-              <input value={nameInput} onChange={e => setNameInput(e.target.value)}
-                onKeyDown={e => { if(e.key==="Enter") renameProf(); if(e.key==="Escape") setEditingName(false); }}
-                style={{background:"#0d1825", border:`1px solid #2d6aad`, color:TEXT, borderRadius:4, padding:"4px 8px", fontSize:11, width:120, fontFamily:"inherit"}} autoFocus/>
+          ? <React.Fragment>
+              <input value={nameInput} onChange={function(e){setNameInput(e.target.value);}}
+                onKeyDown={function(e){if(e.key==="Enter")renameProf();if(e.key==="Escape")setEditingName(false);}}
+                style={{background:"#0d1825", border:"1px solid #2d6aad", color:TEXT, borderRadius:4, padding:"4px 8px", fontSize:11, width:120, fontFamily:"inherit"}} autoFocus/>
               <button style={btnStyle(true)} onClick={renameProf}>OK</button>
-            </>
-          : <button style={btnStyle(false)} onClick={() => { setNameInput(p.name); setEditingName(true); }}>Rename</button>
+            </React.Fragment>
+          : <button style={btnStyle(false)} onClick={function(){setNameInput(p.name);setEditingName(true);}}>Rename</button>
         }
       </div>
 
-      {/* Tabs */}
       <div style={{display:"flex", gap:4, marginBottom:12}}>
-        {[["opt","Optimizer"],["cfg","Configuration"],["summary","Summary"]].map(([id,lbl]) => (
-          <button key={id} style={{...btnStyle(tab===id), padding:"6px 18px", fontSize:13}} onClick={() => setTab(id)}>{lbl}</button>
-        ))}
+        {[["opt","Optimizer"],["cfg","Configuration"],["summary","Summary"]].map(function(item){
+          return <button key={item[0]} style={Object.assign({},btnStyle(tab===item[0]),{padding:"6px 18px",fontSize:13})} onClick={function(){setTab(item[0]);}}>{item[1]}</button>;
+        })}
       </div>
 
-      {tab === "cfg" ? (
+      {tab==="summary" ? <SummaryTab profiles={profiles} prices={prices}/> : tab==="cfg" ? (
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12}}>
 
-          {/* Left column */}
           <div>
-            {/* Slot configuration */}
             <div style={panelStyle}>
               <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>SLOT CONFIGURATION</div>
-              <SlotPicker label="Structure slots" value={sSlots} onChange={v => upd({structureSlots:v})}/>
-              <SlotPicker label="Outfit slots"    value={oSlots} onChange={v => upd({outfitSlots:v})}/>
-              <div style={{borderTop:`1px solid ${BORDER}`, margin:"10px 0"}}/>
+              <SlotPicker label="Structure slots" value={sSlots} onChange={function(v){upd({structureSlots:v});}}/>
+              <SlotPicker label="Outfit slots"    value={oSlots} onChange={function(v){upd({outfitSlots:v});}}/>
+              <div style={{borderTop:"1px solid "+BORDER, margin:"10px 0"}}/>
               <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:10}}>CRAFTING SLOTS</div>
-              <SlotPicker label="Crafting slots" value={craftSlots} max={4} onChange={v => upd({craftSlots:v})}/>
+              <SlotPicker label="Crafting slots" value={craftSlots} max={4} onChange={function(v){upd({craftSlots:v});}}/>
               <div style={{fontSize:10, color:DIM, marginTop:4}}>
-                {craftSlots} slot{craftSlots > 1 ? "s" : ""} x 10 crafts = <span style={{color:TEXT}}>{totalCrafts} crafts per queue fill</span>
+                {craftSlots} slot{craftSlots>1?"s":""} x 10 crafts = <span style={{color:TEXT}}>{totalCrafts} crafts per queue fill</span>
               </div>
             </div>
 
-            {/* Market prices */}
             <div style={panelStyle}>
               <div style={{fontSize:10, color:GOLD, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>MARKET PRICES</div>
-              <PriceInput label="Abidos (per unit)"  value={prices.abidosPrice}       onChange={v => setPrice("abidosPrice", v)}/>
-              <div style={{borderTop:`1px solid ${BORDER}`, margin:"8px 0"}}/>
+              <PriceInput label="Abidos (per unit)"  value={prices.abidosPrice}      onChange={function(v){setPrice("abidosPrice",v);}}/>
+              <div style={{borderTop:"1px solid "+BORDER, margin:"8px 0"}}/>
               <div style={{fontSize:10, color:DIM, marginBottom:6}}>Stack of 100:</div>
-              <PriceInput label="Timber"             value={prices.timberPrice}        onChange={v => setPrice("timberPrice", v)}/>
-              <PriceInput label="Tender Timber"      value={prices.tenderPrice}        onChange={v => setPrice("tenderPrice", v)}/>
-              <PriceInput label="Abidos Timber"      value={prices.abidosTimberPrice}  onChange={v => setPrice("abidosTimberPrice", v)}/>
-
-              {/* Shopping list */}
-              <div style={{borderTop:`1px solid ${BORDER}`, marginTop:10, paddingTop:10}}>
-                <div style={{fontSize:10, color:DIM, marginBottom:6}}>
-                  Shopping list for {craftSlots} slot{craftSlots > 1 ? "s" : ""} x 10 crafts ({totalCrafts} crafts):
-                </div>
-                <div style={rowStyle}>
-                  <span style={{color:DIM}}>Abidos Timber</span>
-                  <span style={{color:TEXT, textAlign:"right"}}>
-                    {stacksAbidos} stack{stacksAbidos !== 1 ? "s" : ""} ({needAbidos} units)
-                    <span style={{color:GOLD, marginLeft:6}}>{(stacksAbidos * prices.abidosTimberPrice).toLocaleString()}g</span>
-                  </span>
-                </div>
-                <div style={rowStyle}>
-                  <span style={{color:DIM}}>Tender Timber</span>
-                  <span style={{color:TEXT, textAlign:"right"}}>
-                    {stacksTender} stack{stacksTender !== 1 ? "s" : ""} ({needTender} units)
-                    <span style={{color:GOLD, marginLeft:6}}>{(stacksTender * prices.tenderPrice).toLocaleString()}g</span>
-                  </span>
-                </div>
-                <div style={rowStyle}>
-                  <span style={{color:DIM}}>Timber</span>
-                  <span style={{color:TEXT, textAlign:"right"}}>
-                    {stacksTimber} stack{stacksTimber !== 1 ? "s" : ""} ({needTimber} units)
-                    <span style={{color:GOLD, marginLeft:6}}>{(stacksTimber * prices.timberPrice).toLocaleString()}g</span>
-                  </span>
-                </div>
-                <div style={{display:"flex", justifyContent:"space-between", fontSize:11, marginTop:6, paddingTop:6, borderTop:`1px solid ${BORDER}`}}>
-                  <span style={{color:DIM, fontWeight:"bold"}}>Total material cost</span>
+              <PriceInput label="Timber"            value={prices.timberPrice}       onChange={function(v){setPrice("timberPrice",v);}}/>
+              <PriceInput label="Tender Timber"     value={prices.tenderPrice}       onChange={function(v){setPrice("tenderPrice",v);}}/>
+              <PriceInput label="Abidos Timber"     value={prices.abidosTimberPrice} onChange={function(v){setPrice("abidosTimberPrice",v);}}/>
+              <div style={{borderTop:"1px solid "+BORDER, marginTop:10, paddingTop:10}}>
+                <div style={{fontSize:10, color:DIM, marginBottom:6}}>Shopping list ({totalCrafts} crafts):</div>
+                {[
+                  {label:"Abidos Timber", stacks:stacksAbidos, units:needAbidos, price:prices.abidosTimberPrice},
+                  {label:"Tender Timber", stacks:stacksTender, units:needTender, price:prices.tenderPrice},
+                  {label:"Timber",        stacks:stacksTimber, units:needTimber, price:prices.timberPrice},
+                ].map(function(item){
+                  return (
+                    <div key={item.label} style={{display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:4}}>
+                      <span style={{color:DIM}}>{item.label}</span>
+                      <span style={{color:TEXT}}>
+                        {item.stacks} stack{item.stacks!==1?"s":""} ({item.units})
+                        <span style={{color:GOLD, marginLeft:6}}>{(item.stacks*item.price).toLocaleString()}g</span>
+                      </span>
+                    </div>
+                  );
+                })}
+                <div style={{display:"flex", justifyContent:"space-between", fontSize:11, marginTop:6, paddingTop:6, borderTop:"1px solid "+BORDER}}>
+                  <span style={{color:DIM, fontWeight:"bold"}}>Total</span>
                   <span style={{color:GOLD, fontWeight:"bold"}}>{shoppingGold.toLocaleString()}g</span>
                 </div>
               </div>
-
-              {/* Profit breakdown */}
-              <div style={{borderTop:`1px solid ${BORDER}`, marginTop:10, paddingTop:10}}>
+              <div style={{borderTop:"1px solid "+BORDER, marginTop:10, paddingTop:10}}>
                 <div style={{fontSize:10, color:DIM, marginBottom:6}}>Profit per craft:</div>
-                <div style={rowStyle}>
-                  <span style={{color:DIM}}>Material cost</span>
-                  <span style={{color:TEXT}}>{materialCost.toFixed(0)}g</span>
-                </div>
-                <div style={rowStyle}>
-                  <span style={{color:DIM}}>Innates only</span>
-                  <span style={{color: profitInnate > 0 ? "#60c060" : "#e06060"}}>{profitInnate.toFixed(0)}g</span>
-                </div>
-                {optimalProfit && (
-                  <>
-                    <div style={rowStyle}>
-                      <span style={{color:DIM}}>With #1 combo</span>
-                      <span style={{color: optimalProfit.ppc > 0 ? "#60c060" : "#e06060"}}>{optimalProfit.ppc.toFixed(0)}g</span>
-                    </div>
-                    <div style={{borderTop:`1px solid ${BORDER}`, marginTop:6, paddingTop:6}}>
-                      <div style={{fontSize:10, color:DIM, marginBottom:4}}>Daily estimate (with #1 combo):</div>
-                      <div style={rowStyle}>
-                        <span style={{color:DIM}}>Crafts per day</span>
-                        <span style={{color:TEXT}}>{optimalProfit.dailyCrafts.toFixed(1)}</span>
-                      </div>
-                      <div style={rowStyle}>
-                        <span style={{color:DIM, fontWeight:"bold"}}>Daily profit</span>
-                        <span style={{color: optimalProfit.daily > 0 ? "#60c060" : "#e06060", fontWeight:"bold"}}>{optimalProfit.daily.toFixed(0)}g</span>
-                      </div>
-                    </div>
-                  </>
-                )}
+                {rowJ("Material cost", matCost.toFixed(0)+"g")}
+                {rowJ("Innates only",  profitInnate.toFixed(0)+"g", profitInnate>=0?"#60c060":"#e06060")}
+                {optimalProfit && rowJ("With #1 combo", optimalProfit.ppc.toFixed(0)+"g", optimalProfit.ppc>=0?"#60c060":"#e06060")}
+                {optimalProfit && <React.Fragment>
+                  <div style={{borderTop:"1px solid "+BORDER, marginTop:6, paddingTop:6}}>
+                    <div style={{fontSize:10, color:DIM, marginBottom:4}}>Daily estimate (#1 combo):</div>
+                    {rowJ("Crafts/day",   optimalProfit.dailyCrafts.toFixed(1))}
+                    {rowJ("Daily profit", optimalProfit.daily.toFixed(0)+"g", optimalProfit.daily>=0?"#60c060":"#e06060")}
+                  </div>
+                </React.Fragment>}
               </div>
             </div>
 
-            {/* Innate bonuses */}
             <div style={panelStyle}>
-              <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>INNATE / PET BONUSES</div>
-              {Object.keys(STATS).map(stat => {
-                const cap = CAPS[stat], v = p.innate[stat]||0, capped = cap && v >= cap;
-                return (
-                  <div key={stat} style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
-                    <span style={{fontSize:11, color: capped ? "#e08050" : DIM}}>{STATS[stat].label}{capped ? " !" : ""}</span>
-                    <div style={{display:"flex", alignItems:"center", gap:4, flexShrink:0}}>
-                      <button onClick={() => setIn(stat, v-1)} style={{...btnStyle(false), padding:"1px 6px", fontSize:13}}>-</button>
-                      <span style={{width:28, textAlign:"center", fontSize:13, color: capped ? "#e08050" : TEXT}}>{v}%</span>
-                      <button onClick={() => setIn(stat, v+1)} style={{...btnStyle(false), padding:"1px 6px", fontSize:13}}>+</button>
-                    </div>
-                  </div>
-                );
+              <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>INNATE BONUSES</div>
+              {INNATE_STATS.map(function(stat){
+                return <StatCounter key={stat} stat={stat} value={p.innate[stat]||0} onChange={function(v){setIn(stat,v);}}/>;
+              })}
+            </div>
+
+            <div style={panelStyle}>
+              <div style={{fontSize:10, color:"#5ba4cf", fontWeight:"bold", letterSpacing:1, marginBottom:4}}>PET BONUSES</div>
+              <div style={{fontSize:10, color:DIM, marginBottom:12}}>Legendary pets' bonuses</div>
+              {PET_STATS.map(function(stat){
+                return <StatCounter key={stat} stat={stat} value={p.innate[stat]||0} onChange={function(v){setIn(stat,v);}}/>;
               })}
             </div>
           </div>
 
-          {/* Structures */}
           <div style={panelStyle}>
             <div style={{fontSize:10, color:"#5ba4cf", fontWeight:"bold", letterSpacing:1, marginBottom:12}}>AVAILABLE STRUCTURES</div>
-            {STRUCTURES.map(s => {
-              const on = p.structs.includes(s.id);
+            {STRUCTURES.map(function(s){
+              var on = p.structs.indexOf(s.id)>=0;
               return (
-                <div key={s.id} onClick={() => togS(s.id)}
+                <div key={s.id} onClick={function(){togS(s.id);}}
                   style={{display:"flex", gap:8, alignItems:"flex-start", marginBottom:10, cursor:"pointer"}}>
-                  <Checkbox checked={on} onChange={() => togS(s.id)} color="#2d6aad"/>
+                  <Checkbox checked={on} onChange={function(){togS(s.id);}} color="#2d6aad"/>
                   <div style={{textAlign:"left"}}>
-                    <div style={{fontSize:12, color: on ? TEXT : "#3a5060", fontWeight: on ? "600" : "normal"}}>{s.name}</div>
+                    <div style={{fontSize:12, color:on?TEXT:"#3a5060", fontWeight:on?"600":"normal"}}>{s.name}</div>
                     <div style={{fontSize:10, color:"#3a5060"}}>{s.acq}</div>
                     <div style={{fontSize:10, color:"#4a6878", wordBreak:"break-word"}}>
-                      {Object.entries(s.bonuses).map(([k,v]) => (STATS[k]?.label||k) + " " + fmtBonus(k,v)).join(" / ")}
+                      {Object.keys(s.bonuses).map(function(k){ return (STATS[k]?STATS[k].label:k)+" "+fmtBonus(k,s.bonuses[k]); }).join(" / ")}
                     </div>
                   </div>
                 </div>
@@ -629,19 +618,18 @@ export default function App() {
             })}
           </div>
 
-          {/* Outfits */}
           <div style={panelStyle}>
             <div style={{fontSize:10, color:"#cf9a5b", fontWeight:"bold", letterSpacing:1, marginBottom:12}}>AVAILABLE OUTFITS</div>
-            {OUTFITS.map(o => {
-              const on = p.outfits.includes(o.id);
+            {OUTFITS.map(function(o){
+              var on = p.outfits.indexOf(o.id)>=0;
               return (
-                <div key={o.id} onClick={() => togO(o.id)}
+                <div key={o.id} onClick={function(){togO(o.id);}}
                   style={{display:"flex", gap:8, alignItems:"flex-start", marginBottom:10, cursor:"pointer"}}>
-                  <Checkbox checked={on} onChange={() => togO(o.id)} color="#ad6a2d"/>
+                  <Checkbox checked={on} onChange={function(){togO(o.id);}} color="#ad6a2d"/>
                   <div style={{textAlign:"left"}}>
-                    <div style={{fontSize:12, color: on ? TEXT : "#3a5060", fontWeight: on ? "600" : "normal"}}>{o.name}</div>
+                    <div style={{fontSize:12, color:on?TEXT:"#3a5060", fontWeight:on?"600":"normal"}}>{o.name}</div>
                     <div style={{fontSize:10, color:"#4a6878", wordBreak:"break-word"}}>
-                      {Object.entries(o.bonuses).map(([k,v]) => (STATS[k]?.label||k) + " " + fmtBonus(k,v)).join(" / ")}
+                      {Object.keys(o.bonuses).map(function(k){ return (STATS[k]?STATS[k].label:k)+" "+fmtBonus(k,o.bonuses[k]); }).join(" / ")}
                     </div>
                   </div>
                 </div>
@@ -650,46 +638,30 @@ export default function App() {
           </div>
         </div>
 
-      ) : tab === "summary" ? (
-        <SummaryTab profiles={profiles} prices={prices} />
       ) : (
         <div>
           {cappedInnate.length > 0 && (
-            <div style={{...panelStyle, background:"#18120a", borderColor:"#5a4010", padding:10, marginBottom:10}}>
-              <div style={{fontSize:11, color:"#e0a040", marginBottom:5}}>
-                Innate stats already at cap - equipment bonuses to these are fully wasted:
-              </div>
+            <div style={Object.assign({},panelStyle,{background:"#18120a", borderColor:"#5a4010", padding:10, marginBottom:10})}>
+              <div style={{fontSize:11, color:"#e0a040", marginBottom:5}}>Innate stats at cap - bonuses wasted:</div>
               <div style={{display:"flex", flexWrap:"wrap", gap:6}}>
-                {cappedInnate.map(([k,v]) => (
-                  <span key={k} style={{background:"#2a1a08", border:"1px solid #6a4010", color:"#c08030", borderRadius:4, padding:"2px 8px", fontSize:11}}>
-                    {STATS[k]?.label} ({fmtBonus(k, Math.min(v, CAPS[k]))} = cap)
-                  </span>
-                ))}
+                {cappedInnate.map(function(k){
+                  return <span key={k} style={{background:"#2a1a08", border:"1px solid #6a4010", color:"#c08030", borderRadius:4, padding:"2px 8px", fontSize:11}}>
+                    {STATS[k]?STATS[k].label:k} (={CAPS[k]}%)
+                  </span>;
+                })}
               </div>
             </div>
           )}
-
-          <div style={{...panelStyle, padding:"8px 14px", marginBottom:10, display:"flex", gap:16, flexWrap:"wrap", alignItems:"center"}}>
+          <div style={Object.assign({},panelStyle,{padding:"8px 14px", marginBottom:10, display:"flex", gap:16, flexWrap:"wrap", alignItems:"center"})}>
             <span style={{fontSize:11, color:DIM}}>Structure slots: <span style={{color:GOLD, fontWeight:"bold"}}>{sSlots}</span></span>
             <span style={{fontSize:11, color:DIM}}>Outfit slots: <span style={{color:GOLD, fontWeight:"bold"}}>{oSlots}</span></span>
-            <span style={{fontSize:11, color:DIM}}>Abidos price: <span style={{color:TEXT}}>{prices.abidosPrice}g</span></span>
-            {optimalProfit && (
-              <span style={{fontSize:11, color:DIM}}>
-                Daily profit: <span style={{color: optimalProfit.daily > 0 ? "#60c060" : "#e06060", fontWeight:"bold"}}>{optimalProfit.daily.toFixed(0)}g</span>
-              </span>
-            )}
-            <span style={{fontSize:11, color:DIM}}>
-              Weights - cost: <span style={{color:TEXT}}>{W.specialCost.toFixed(0)}</span>
-              {" / "}energy: <span style={{color:TEXT}}>{fullSlots ? W.specialEnergy.toFixed(0) : "off"}</span>
-              {" / "}GSC: <span style={{color:TEXT}}>{W.specialGSC.toFixed(1)}</span>
-            </span>
+            <span style={{fontSize:11, color:DIM}}>Abidos: <span style={{color:TEXT}}>{prices.abidosPrice}g</span></span>
+            {optimalProfit && <span style={{fontSize:11, color:DIM}}>Daily profit: <span style={{color:optimalProfit.daily>=0?"#60c060":"#e06060", fontWeight:"bold"}}>{Math.round(optimalProfit.daily).toLocaleString()}g</span></span>}
+            <span style={{fontSize:11, color:DIM}}>Weights - cost: <span style={{color:TEXT}}>{W.specialCost.toFixed(0)}</span> / energy: <span style={{color:TEXT}}>{fullSlots?W.specialEnergy.toFixed(0):"off"}</span> / GSC: <span style={{color:TEXT}}>{W.specialGSC.toFixed(1)}</span></span>
           </div>
-
-          {results.length === 0
-            ? <div style={{...panelStyle, textAlign:"center", color:"#e06060", padding:30}}>
-                Enable more items in Configuration to generate recommendations.
-              </div>
-            : results.map((r,i) => <ResultCard key={i} r={r} rank={i} innate={p.innate}/>)
+          {results.length===0
+            ? <div style={Object.assign({},panelStyle,{textAlign:"center", color:"#e06060", padding:30})}>Enable more items in Configuration.</div>
+            : results.map(function(r,i){ return <ResultCard key={i} r={r} rank={i} innate={p.innate}/>; })
           }
         </div>
       )}
