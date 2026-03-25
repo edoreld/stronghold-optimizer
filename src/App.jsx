@@ -456,7 +456,7 @@ export default function App() {
   var availO     = OUTFITS.filter(function(o){ return p.outfits.indexOf(o.id)>=0; });
   var sSlots     = p.structureSlots || DEF_SSLOTS;
   var oSlots     = p.outfitSlots    || DEF_OSLOTS;
-  var craftSlots = p.craftSlots != null ? p.craftSlots : DEF_CRAFT_SLOTS;
+  var craftSlots = (p.craftSlots !== undefined && p.craftSlots !== null) ? p.craftSlots : DEF_CRAFT_SLOTS;
   var fullSlots  = sSlots===3 && oSlots===3;
   var W          = computeWeights(prices, p.innate, fullSlots, craftSlots);
   var innateGSC    = ((p.innate.specialGSC||0) + (p.innate.generalGSC||0)) / 100;
@@ -583,14 +583,13 @@ export default function App() {
                 </div>
               </div>
               <div style={{borderTop:"1px solid "+BORDER, marginTop:10, paddingTop:10}}>
-                <div style={{fontSize:10, color:DIM, marginBottom:6}}>Profit per craft:</div>
+                <div style={{fontSize:10, color:DIM, marginBottom:6}}>Profit per craft (innates + pets + #1 combo):</div>
                 {rowJ("Material cost", matCost.toFixed(0)+"g")}
-                {rowJ("Innates only",  profitInnate.toFixed(0)+"g", profitInnate>=0?"#60c060":"#e06060")}
-                {optimalProfit && rowJ("With #1 combo", optimalProfit.ppc.toFixed(0)+"g", optimalProfit.ppc>=0?"#60c060":"#e06060")}
+                {optimalProfit && rowJ("Profit/craft", optimalProfit.ppc.toFixed(0)+"g", optimalProfit.ppc>=0?"#60c060":"#e06060")}
                 {optimalProfit && <React.Fragment>
                   <div style={{borderTop:"1px solid "+BORDER, marginTop:6, paddingTop:6}}>
-                    <div style={{fontSize:10, color:DIM, marginBottom:4}}>Daily estimate (#1 combo):</div>
-                    {rowJ("Crafts/day",   optimalProfit.dailyCrafts.toFixed(1))}
+                    <div style={{fontSize:10, color:DIM, marginBottom:4}}>Daily estimate:</div>
+                    {rowJ("Crafts/day", optimalProfit.dailyCrafts.toFixed(1)+"  ("+(optimalProfit.slotLimited?"slot-limited":"energy-limited")+")")}
                     {rowJ("Daily profit", optimalProfit.daily.toFixed(0)+"g", optimalProfit.daily>=0?"#60c060":"#e06060")}
                   </div>
                 </React.Fragment>}
