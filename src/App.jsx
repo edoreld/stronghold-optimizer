@@ -76,7 +76,10 @@ function computeWeights(prices, innate, fullSlots, craftSlots) {
   var dailyCrafts  = Math.min(energyCrafts, slotCrafts);
   var gsc          = effectiveGSC(innate.specialGSC || 0, innate.generalGSC || 0);
   var expAbidos    = ABIDOS_PER * (1 + gsc);
-  var profitPerCraft = expAbidos * prices.abidosPrice - mat - baseFee;
+  var craftFee = BASE_FEE * (1 - innateCost);
+var revenue = expAbidos * prices.abidosPrice * TAX_RATE;
+
+var profitPerCraft = revenue - mat - craftFee;
   var costW        = BASE_FEE * 0.01 * dailyCrafts;
   var extraEnergyCrafts = Math.min(DAILY_ENERGY / (baseEner * 0.99), slotCrafts) - dailyCrafts;
   var energyW      = fullSlots ? Math.max(0, extraEnergyCrafts * profitPerCraft) : 0;
@@ -566,7 +569,12 @@ var optimalProfit = useMemo(function(){
   var gsc = effectiveGSC(tot.specialGSC || 0, tot.generalGSC || 0);
   var expAbidos = ABIDOS_PER * (1 + gsc);
 
-  var ppc = expAbidos * prices.abidosPrice - matCost - reducedFee;
+  var costReduction = (effSpCost + effGenCost) / 100;
+  var craftFee = getCraftFee(costReduction);
+
+  var revenue = expAbidos * prices.abidosPrice * TAX_RATE;
+
+  var ppc = revenue - matCost - craftFee;
 
   return {
     ppc: ppc,
