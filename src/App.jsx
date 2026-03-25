@@ -55,22 +55,29 @@ function materialCostFn(prices) {
        + (86 / 100 * prices.timberPrice);
 }
 
+function effectiveGSC(spGSC, genGSC) {
+  return BASE_GSC * (1 + spGSC / 100) + genGSC / 100;
+}
+
 function computeWeights(prices, innate, fullSlots, craftSlots) {
-  var mat           = materialCostFn(prices);
-  var innateEner    = (innate.specialEnergy || 0) / 100;
-  var innateCost    = (innate.generalCost   || 0) / 100;
-  var innateGSC     = ((innate.specialGSC||0) + (innate.generalGSC||0)) / 100;
-  var baseEner      = BASE_ENERGY * (1 - innateEner);
-  var baseFee       = BASE_FEE    * (1 - innateCost);
-  var energyCrafts  = DAILY_ENERGY / baseEner;
-  var slotCrafts    = (craftSlots || 4) * 10 * 2;
-  var dailyCrafts   = Math.min(energyCrafts, slotCrafts);
-  var expectedAbidos = ABIDOS_PER * (1 + innateGSC);
-  var profitPerCraft = expectedAbidos * prices.abidosPrice - mat - baseFee;
-  var costW         = BASE_FEE * 0.01 * dailyCrafts;
+  var mat          = materialCostFn(prices);
+  var innateEner   = (innate.specialEnergy || 0) / 100;
+  var innateCost   = (innate.generalCost   || 0) / 100;
+  var baseEner     = BASE_ENERGY * (1 - innateEner);
+  var baseFee      = BASE_FEE    * (1 - innateCost);
+  var energyCrafts = DAILY_ENERGY / baseEner;
+  var slotCrafts   = craftSlots * 10 * 2;
+  var dailyCrafts  = Math.min(energyCrafts, slotCrafts);
+  var gsc          = effectiveGSC(innate.specialGSC || 0, innate.generalGSC || 0);
+  var expAbidos    = ABIDOS_PER * (1 + gsc);
+  var profitPerCraft = expAbidos * prices.abidosPrice - mat - baseFee;
+  var costW        = BASE_FEE * 0.01 * dailyCrafts;
   var extraEnergyCrafts = Math.min(DAILY_ENERGY / (baseEner * 0.99), slotCrafts) - dailyCrafts;
-  var energyW       = fullSlots ? Math.max(0, extraEnergyCrafts * profitPerCraft) : 0;
-  var gscW          = 0.01 * ABIDOS_PER * prices.abidosPrice * dailyCrafts;
+  var energyW      = fullSlots ? Math.max(0, extraEnergyCrafts * profitPerCraft) : 0;
+  // special GSC: multiplicative from 5% base → 1% bonus adds 0.05×0.01 = 0.0005 to chance
+  var spGscW       = BASE_GSC * 0.01 * ABIDOS_PER * prices.abidosPrice * dailyCrafts;
+  // general GSC: additive → 1% bonus adds 0.01 to chance directly (20× more valuable)
+  var genGscW      = 0.01 * ABIDOS_PER * prices.abidosPrice * dailyCrafts;
   return {
     specialCost:   Math.max(1, costW),
     generalCost:   Math.max(1, costW),
@@ -78,8 +85,8 @@ function computeWeights(prices, innate, fullSlots, craftSlots) {
     generalEnergy: 0,
     specialTime:   2,
     generalTime:   2,
-    specialGSC:    Math.max(1, gscW),
-    generalGSC:    Math.max(1, gscW),
+    specialGSC:    Math.max(1, spGscW),
+    generalGSC:    Math.max(1, genGscW),
   };
 }
 
@@ -449,7 +456,7 @@ export default function App() {
   var availO     = OUTFITS.filter(function(o){ return p.outfits.indexOf(o.id)>=0; });
   var sSlots     = p.structureSlots || DEF_SSLOTS;
   var oSlots     = p.outfitSlots    || DEF_OSLOTS;
-  var craftSlots = p.craftSlots     || DEF_CRAFT_SLOTS;
+  var craftSlots = p.craftSlots != null ? p.craftSlots : DEF_CRAFT_SLOTS;
   var fullSlots  = sSlots===3 && oSlots===3;
   var W          = computeWeights(prices, p.innate, fullSlots, craftSlots);
   var innateGSC    = ((p.innate.specialGSC||0) + (p.innate.generalGSC||0)) / 100;
