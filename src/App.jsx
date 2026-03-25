@@ -143,6 +143,8 @@ function optimize(availS, availO, innate, sSlots, oSlots, prices, n, craftSlots)
 function calcProfileProfit(profile, prices) {
   var p = profile;
   var sSlots = p.structureSlots || 3, oSlots = p.outfitSlots || 3;
+  var craftSlots = p.craftSlots || 4;
+
   var availS = STRUCTURES.filter(function(s){ return p.structs.indexOf(s.id) >= 0; });
   var availO = OUTFITS.filter(function(o){ return p.outfits.indexOf(o.id) >= 0; });
   var results = optimize(availS, availO, p.innate, sSlots, oSlots, prices, 1);
@@ -156,17 +158,26 @@ function calcProfileProfit(profile, prices) {
 
   var reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost) / 100);
   var reducedEnergy = BASE_ENERGY * (1 - effEnergy / 100);
-  var dailyCrafts   = DAILY_ENERGY / reducedEnergy;
+
+  // ✅ FIX: dual limitation (energy + slots used twice/day)
+  var energyCrafts = DAILY_ENERGY / reducedEnergy;
+  var slotCrafts   = craftSlots * 10 * 2;
+  var dailyCrafts  = Math.min(energyCrafts, slotCrafts);
 
   var mat = materialCostFn(prices);
 
-  // ✅ FIX: include GSC in expected output
   var gsc = effectiveGSC(tot.specialGSC || 0, tot.generalGSC || 0);
   var expAbidos = ABIDOS_PER * (1 + gsc);
 
   var ppc = expAbidos * prices.abidosPrice - mat - reducedFee;
 
-  return { daily: dailyCrafts * ppc, dailyCrafts: dailyCrafts, ppc: ppc, combo: results[0] };
+  return {
+    daily: dailyCrafts * ppc,
+    dailyCrafts: dailyCrafts,
+    ppc: ppc,
+    slotLimited: slotCrafts < energyCrafts,
+    combo: results[0]
+  };
 }
 
 
@@ -510,6 +521,7 @@ var optimalProfit = useMemo(function(){
   if (!results.length) return null;
 
   var tot = results[0].tot;
+  var craftSlots = p.craftSlots || 4;
 
   var effSpCost  = Math.min(tot.specialCost  ||0, 10);
   var effGenCost = Math.min(tot.generalCost  ||0, 30);
@@ -517,16 +529,24 @@ var optimalProfit = useMemo(function(){
 
   var reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost)/100);
   var reducedEnergy = BASE_ENERGY * (1 - effEnergy/100);
-  var dailyCrafts   = DAILY_ENERGY / reducedEnergy;
 
-  // ✅ FIX: include GSC
+  // ✅ FIX: proper craft limit
+  var energyCrafts = DAILY_ENERGY / reducedEnergy;
+  var slotCrafts   = craftSlots * 10 * 2;
+  var dailyCrafts  = Math.min(energyCrafts, slotCrafts);
+
   var gsc = effectiveGSC(tot.specialGSC || 0, tot.generalGSC || 0);
   var expAbidos = ABIDOS_PER * (1 + gsc);
 
   var ppc = expAbidos * prices.abidosPrice - matCost - reducedFee;
 
-  return {ppc:ppc, daily:dailyCrafts*ppc, dailyCrafts:dailyCrafts};
-}, [results, JSON.stringify(prices), matCost]);
+  return {
+    ppc: ppc,
+    daily: dailyCrafts * ppc,
+    dailyCrafts: dailyCrafts,
+    slotLimited: slotCrafts < energyCrafts
+  };
+}, [results, JSON.stringify(prices), matCost, p.craftSlots]);
 
   var cappedInnate = Object.keys(p.innate).filter(function(k){ return CAPS[k] && p.innate[k] >= CAPS[k]; });
 
