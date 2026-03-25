@@ -400,11 +400,15 @@ function loadProfiles() {
     if (raw) {
       var p = JSON.parse(raw);
       if (p && p.length) return p.map(function(x){
-        return Object.assign({structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}, x);
+        return Object.assign({structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}, x, {innate: mergeInnate(x.innate||{})});
       });
     }
   } catch(e) {}
   return [{id:1, name:"Main", innate:Object.assign({},DEF_INNATE), structs:DEF_STRUCTS.slice(), outfits:DEF_OUTFITS.slice(), structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}];
+}
+
+function mergeInnate(stored) {
+  return Object.assign({}, DEF_INNATE, stored);
 }
 
 function loadIdx(profiles) {
