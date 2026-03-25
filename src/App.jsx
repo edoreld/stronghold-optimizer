@@ -48,6 +48,12 @@ const BASE_ENERGY  = 288;
 const DAILY_ENERGY = 17503;
 const ABIDOS_PER   = 10;
 const BASE_GSC     = 0.05;
+const TAX_RATE = 0.95;
+
+function getCraftFee(costReduction) {
+  // costReduction is expected as decimal (e.g. 0.12 for 12%)
+  return BASE_FEE * (1 - costReduction);
+}
 
 function materialCostFn(prices) {
   return (33 / 100 * prices.abidosTimberPrice)
@@ -140,46 +146,68 @@ function optimize(availS, availO, innate, sSlots, oSlots, prices, n, craftSlots)
   });
 }
 
-function calcProfileProfit(profile, prices) {
-  var p = profile;
-  var sSlots = p.structureSlots || 3, oSlots = p.outfitSlots || 3;
-  var craftSlots = p.craftSlots || 4;
+function calcProfileProfit(profile, price, cost, gsc, costReduction, energyPerCraft, craftingSlots) {
+  const ABIDOS_PER = 10;
 
-  var availS = STRUCTURES.filter(function(s){ return p.structs.indexOf(s.id) >= 0; });
-  var availO = OUTFITS.filter(function(o){ return p.outfits.indexOf(o.id) >= 0; });
-  var results = optimize(availS, availO, p.innate, sSlots, oSlots, prices, 1);
-  if (!results.length) return null;
+  // Expected output with GSC
+  const expectedOutput = ABIDOS_PER * (1 + gsc);
 
-  var tot = results[0].tot;
+  // Apply marketplace tax
+  const revenue = expectedOutput * price * TAX_RATE;
 
-  var effSpCost  = Math.min(tot.specialCost  || 0, 10);
-  var effGenCost = Math.min(tot.generalCost  || 0, 30);
-  var effEnergy  = Math.min(tot.specialEnergy|| 0, 10);
+  // Apply crafting fee with reduction
+  const craftFee = getCraftFee(costReduction);
 
-  var reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost) / 100);
-  var reducedEnergy = BASE_ENERGY * (1 - effEnergy / 100);
+  const profitPerCraft = revenue - cost - craftFee;
 
-  // ✅ FIX: dual limitation (energy + slots used twice/day)
-  var energyCrafts = DAILY_ENERGY / reducedEnergy;
-  var slotCrafts   = craftSlots * 10 * 2;
-  var dailyCrafts  = Math.min(energyCrafts, slotCrafts);
+  // Energy limit
+  const DAILY_ENERGY = 2880;
+  const energyCrafts = DAILY_ENERGY / energyPerCraft;
 
-  var mat = materialCostFn(prices);
+  // Slot limit (2 runs/day)
+  const slotCrafts = craftingSlots * 10 * 2;
 
-  var gsc = effectiveGSC(tot.specialGSC || 0, tot.generalGSC || 0);
-  var expAbidos = ABIDOS_PER * (1 + gsc);
-
-  var ppc = expAbidos * prices.abidosPrice - mat - reducedFee;
+  const dailyCrafts = Math.min(energyCrafts, slotCrafts);
 
   return {
-    daily: dailyCrafts * ppc,
-    dailyCrafts: dailyCrafts,
-    ppc: ppc,
-    slotLimited: slotCrafts < energyCrafts,
-    combo: results[0]
+    profitPerCraft,
+    dailyCrafts,
+    dailyProfit: profitPerCraft * dailyCrafts
   };
 }
 
+function optimalProfit(options) {
+  const {
+    price,
+    cost,
+    gsc,
+    costReduction,
+    energyPerCraft,
+    craftingSlots
+  } = options;
+
+  const ABIDOS_PER = 10;
+
+  const expectedOutput = ABIDOS_PER * (1 + gsc);
+
+  const revenue = expectedOutput * price * TAX_RATE;
+
+  const craftFee = getCraftFee(costReduction);
+
+  const profitPerCraft = revenue - cost - craftFee;
+
+  const DAILY_ENERGY = 2880;
+  const energyCrafts = DAILY_ENERGY / energyPerCraft;
+  const slotCrafts = craftingSlots * 10 * 2;
+
+  const dailyCrafts = Math.min(energyCrafts, slotCrafts);
+
+  return {
+    profitPerCraft,
+    dailyCrafts,
+    dailyProfit: profitPerCraft * dailyCrafts
+  };
+}
 
 // ── Styles ──────────────────────────────────────────────────────────
 var BG="#0a1520", PANEL="#111d2b", BORDER="#1e3050", TEXT="#c8d4e0", DIM="#5a7a90", GOLD="#f0a500";
