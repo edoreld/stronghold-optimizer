@@ -399,9 +399,7 @@ function loadProfiles() {
     var raw = localStorage.getItem(LS_KEY);
     if (raw) {
       var p = JSON.parse(raw);
-      if (p && p.length) return p.map(function(x){
-        return Object.assign({structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}, x, {innate: mergeInnate(x.innate||{})});
-      });
+      if (p && p.length) return p.map(cleanProfile);
     }
   } catch(e) {}
   return [{id:1, name:"Main", innate:Object.assign({},DEF_INNATE), structs:DEF_STRUCTS.slice(), outfits:DEF_OUTFITS.slice(), structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS}];
@@ -409,6 +407,21 @@ function loadProfiles() {
 
 function mergeInnate(stored) {
   return Object.assign({}, DEF_INNATE, stored);
+}
+
+var VALID_STRUCT_IDS = STRUCTURES.map(function(s){ return s.id; });
+var VALID_OUTFIT_IDS = OUTFITS.map(function(o){ return o.id; });
+
+function cleanProfile(x) {
+  return Object.assign(
+    {structureSlots:DEF_SSLOTS, outfitSlots:DEF_OSLOTS, craftSlots:DEF_CRAFT_SLOTS},
+    x,
+    {
+      innate: mergeInnate(x.innate || {}),
+      structs: (x.structs || []).filter(function(id){ return VALID_STRUCT_IDS.indexOf(id) >= 0; }),
+      outfits: (x.outfits || []).filter(function(id){ return VALID_OUTFIT_IDS.indexOf(id) >= 0; }),
+    }
+  );
 }
 
 function loadIdx(profiles) {
