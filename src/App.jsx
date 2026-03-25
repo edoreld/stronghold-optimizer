@@ -36,7 +36,9 @@ const STATS = {
 };
 
 const PET_STATS    = ["specialEnergy","specialGSC","specialTime"];
-const INNATE_STATS = Object.keys(STATS).filter(s => !PET_STATS.includes(s));
+const INNATE_STATS = Object.keys(STATS).filter(function(s){
+  return !PET_STATS.includes(s) && s !== "specialCost" && s !== "generalEnergy";
+});
 
 function fmtBonus(k, v) { return (STATS[k] && STATS[k].positive ? "+" : "-") + v + "%"; }
 function step(v, delta) { return Math.max(0, Math.round((v + delta) * 2) / 2); }
@@ -53,18 +55,22 @@ function materialCostFn(prices) {
        + (86 / 100 * prices.timberPrice);
 }
 
-function computeWeights(prices, innate, fullSlots) {
+function computeWeights(prices, innate, fullSlots, craftSlots) {
   var mat           = materialCostFn(prices);
   var innateEner    = (innate.specialEnergy || 0) / 100;
   var innateCost    = (innate.generalCost   || 0) / 100;
+  var innateGSC     = ((innate.specialGSC||0) + (innate.generalGSC||0)) / 100;
   var baseEner      = BASE_ENERGY * (1 - innateEner);
   var baseFee       = BASE_FEE    * (1 - innateCost);
-  var dailyCrafts   = DAILY_ENERGY / baseEner;
-  var profitPerCraft= ABIDOS_PER * prices.abidosPrice - mat - baseFee;
+  var energyCrafts  = DAILY_ENERGY / baseEner;
+  var slotCrafts    = (craftSlots || 4) * 10 * 2;
+  var dailyCrafts   = Math.min(energyCrafts, slotCrafts);
+  var expectedAbidos = ABIDOS_PER * (1 + innateGSC);
+  var profitPerCraft = expectedAbidos * prices.abidosPrice - mat - baseFee;
   var costW         = BASE_FEE * 0.01 * dailyCrafts;
-  var extraCrafts   = DAILY_ENERGY / (baseEner * 0.99) - dailyCrafts;
-  var energyW       = fullSlots ? Math.max(0, extraCrafts * profitPerCraft) : 0;
-  var gscW          = BASE_GSC * 0.01 * ABIDOS_PER * prices.abidosPrice * dailyCrafts;
+  var extraEnergyCrafts = Math.min(DAILY_ENERGY / (baseEner * 0.99), slotCrafts) - dailyCrafts;
+  var energyW       = fullSlots ? Math.max(0, extraEnergyCrafts * profitPerCraft) : 0;
+  var gscW          = 0.01 * ABIDOS_PER * prices.abidosPrice * dailyCrafts;
   return {
     specialCost:   Math.max(1, costW),
     generalCost:   Math.max(1, costW),
@@ -102,24 +108,24 @@ function effOf(tot) {
   return e;
 }
 
-function scoreCombo(structs, outfits, innate, sSlots, oSlots, prices) {
+function scoreCombo(structs, outfits, innate, sSlots, oSlots, prices, craftSlots) {
   var tot = calcTotals(structs, outfits, innate);
   var e = effOf(tot), ei = effOf(innate);
   var full = sSlots === 3 && oSlots === 3;
-  var W = computeWeights(prices, innate, full);
+  var W = computeWeights(prices, innate, full, craftSlots);
   return Object.keys(W).reduce(function(s, k) {
     return s + ((e[k] || 0) - (ei[k] || 0)) * W[k];
   }, 0);
 }
 
-function optimize(availS, availO, innate, sSlots, oSlots, prices, n) {
+function optimize(availS, availO, innate, sSlots, oSlots, prices, n, craftSlots) {
   n = n || 3;
   var sk = Math.min(sSlots, availS.length), ok = Math.min(oSlots, availO.length);
   if (sk === 0 || ok === 0) return [];
   var sc = combos(availS, sk), oc = combos(availO, ok), all = [];
   sc.forEach(function(s) {
     oc.forEach(function(o) {
-      all.push({ structs:s, outfits:o, score:scoreCombo(s, o, innate, sSlots, oSlots, prices) });
+      all.push({ structs:s, outfits:o, score:scoreCombo(s, o, innate, sSlots, oSlots, prices, craftSlots) });
     });
   });
   return all.sort(function(a,b){ return b.score - a.score; }).slice(0, n).map(function(r) {
@@ -445,7 +451,9 @@ export default function App() {
   var oSlots     = p.outfitSlots    || DEF_OSLOTS;
   var craftSlots = p.craftSlots     || DEF_CRAFT_SLOTS;
   var fullSlots  = sSlots===3 && oSlots===3;
-  var W          = computeWeights(prices, p.innate, fullSlots);
+  var W          = computeWeights(prices, p.innate, fullSlots, craftSlots);
+  var innateGSC    = ((p.innate.specialGSC||0) + (p.innate.generalGSC||0)) / 100;
+  var slotCraftsMax = craftSlots * 10 * 2;
 
   var totalCrafts  = craftSlots * 10;
   var needAbidos   = totalCrafts * 33;
@@ -456,7 +464,7 @@ export default function App() {
   var stacksTimber = Math.ceil(needTimber  / 100);
   var shoppingGold = stacksAbidos*prices.abidosTimberPrice + stacksTender*prices.tenderPrice + stacksTimber*prices.timberPrice;
   var matCost      = materialCostFn(prices);
-  var profitInnate = ABIDOS_PER*prices.abidosPrice - matCost - BASE_FEE*(1-(p.innate.generalCost||0)/100);
+  var profitInnate = ABIDOS_PER * (1 + innateGSC) * prices.abidosPrice - matCost - BASE_FEE*(1-(p.innate.generalCost||0)/100);
 
   var results = useMemo(function(){
     return optimize(availS, availO, p.innate, sSlots, oSlots, prices);
@@ -591,7 +599,7 @@ export default function App() {
 
             <div style={panelStyle}>
               <div style={{fontSize:10, color:"#5ba4cf", fontWeight:"bold", letterSpacing:1, marginBottom:4}}>PET BONUSES</div>
-              <div style={{fontSize:10, color:DIM, marginBottom:12}}>Legendary pets' bonuses</div>
+              <div style={{fontSize:10, color:DIM, marginBottom:12}}>Legendary pets provide [Special] bonuses in 0.5% increments</div>
               {PET_STATS.map(function(stat){
                 return <StatCounter key={stat} stat={stat} value={p.innate[stat]||0} onChange={function(v){setIn(stat,v);}}/>;
               })}
@@ -656,7 +664,7 @@ export default function App() {
             <span style={{fontSize:11, color:DIM}}>Structure slots: <span style={{color:GOLD, fontWeight:"bold"}}>{sSlots}</span></span>
             <span style={{fontSize:11, color:DIM}}>Outfit slots: <span style={{color:GOLD, fontWeight:"bold"}}>{oSlots}</span></span>
             <span style={{fontSize:11, color:DIM}}>Abidos: <span style={{color:TEXT}}>{prices.abidosPrice}g</span></span>
-            {optimalProfit && <span style={{fontSize:11, color:DIM}}>Daily profit: <span style={{color:optimalProfit.daily>=0?"#60c060":"#e06060", fontWeight:"bold"}}>{Math.round(optimalProfit.daily).toLocaleString()}g</span></span>}
+            {optimalProfit && <span style={{fontSize:11, color:DIM}}>Daily profit: <span style={{color:optimalProfit.daily>=0?"#60c060":"#e06060", fontWeight:"bold"}}>{Math.round(optimalProfit.daily).toLocaleString()}g</span> <span style={{color:"#3a5a6a"}}>({optimalProfit.slotLimited ? "slot-limited" : "energy-limited"})</span></span>}
             <span style={{fontSize:11, color:DIM}}>Weights - cost: <span style={{color:TEXT}}>{W.specialCost.toFixed(0)}</span> / energy: <span style={{color:TEXT}}>{fullSlots?W.specialEnergy.toFixed(0):"off"}</span> / GSC: <span style={{color:TEXT}}>{W.specialGSC.toFixed(1)}</span></span>
           </div>
           {results.length===0
