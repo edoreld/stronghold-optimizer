@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 const STRUCTURES = [
   { id:"ansm",         name:"ANSM-L",                       acq:"Limited Event",      bonuses:{specialCost:4, specialGSC:2} },
@@ -250,6 +250,89 @@ function ResultCard({ r, rank, innate }) {
   );
 }
 
+function calcProfileProfit(profile, prices) {
+  const p = profile;
+  const sSlots = p.structureSlots ?? 3;
+  const oSlots = p.outfitSlots    ?? 3;
+  const availS = STRUCTURES.filter(s => p.structs.includes(s.id));
+  const availO = OUTFITS.filter(o => p.outfits.includes(o.id));
+  const results = optimize(availS, availO, p.innate, sSlots, oSlots, prices, 1);
+  if (!results.length) return null;
+  const tot        = results[0].tot;
+  const effSpCost  = Math.min((tot.specialCost||0),  10);
+  const effGenCost = Math.min((tot.generalCost||0),  30);
+  const effEnergy  = Math.min((tot.specialEnergy||0),10);
+  const reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost) / 100);
+  const reducedEnergy = BASE_ENERGY * (1 - effEnergy / 100);
+  const dailyCrafts   = DAILY_ENERGY / reducedEnergy;
+  const materialCost  = (33/100*prices.abidosTimberPrice) + (45/100*prices.tenderPrice) + (86/100*prices.timberPrice);
+  const ppc           = ABIDOS_PER_CRAFT * prices.abidosPrice - materialCost - reducedFee;
+  const daily         = dailyCrafts * ppc;
+  return { daily, dailyCrafts, ppc, combo: results[0] };
+}
+
+function SummaryTab({ profiles, prices }) {
+  const rows = profiles.map(p => ({
+    name: p.name,
+    ...calcProfileProfit(p, prices),
+  }));
+  const totalDaily   = rows.reduce((s, r) => s + (r.daily||0), 0);
+  const totalMonthly = totalDaily * 30;
+  const totalYearly  = totalDaily * 365;
+
+  const goldColor = v => v >= 0 ? "#60c060" : "#e06060";
+  const fmt = v => Math.round(v).toLocaleString() + "g";
+
+  return (
+    <div>
+      {/* Per-profile table */}
+      <div style={panelStyle}>
+        <div style={{fontSize:10, color:DIM, fontWeight:"bold", letterSpacing:1, marginBottom:12}}>PER PROFILE</div>
+        <div style={{display:"grid", gridTemplateColumns:"1fr repeat(4, auto)", gap:"6px 18px", alignItems:"baseline"}}>
+          {/* Header */}
+          {["Profile","Crafts/day","Profit/craft","Daily profit",""].map((h,i) => (
+            <div key={i} style={{fontSize:10, color:DIM, fontWeight:"bold", borderBottom:`1px solid ${BORDER}`, paddingBottom:4}}>{h}</div>
+          ))}
+          {rows.map((r, i) => r.daily == null ? (
+            <React.Fragment key={i}>
+              <div style={{fontSize:12, color:TEXT}}>{r.name}</div>
+              <div style={{fontSize:11, color:"#e06060", gridColumn:"span 4"}}>No items enabled</div>
+            </React.Fragment>
+          ) : (
+            <React.Fragment key={i}>
+              <div style={{fontSize:12, color:TEXT, fontWeight:"600"}}>{r.name}</div>
+              <div style={{fontSize:12, color:TEXT, textAlign:"right"}}>{r.dailyCrafts.toFixed(1)}</div>
+              <div style={{fontSize:12, color:goldColor(r.ppc), textAlign:"right"}}>{fmt(r.ppc)}</div>
+              <div style={{fontSize:12, color:goldColor(r.daily), textAlign:"right", fontWeight:"bold"}}>{fmt(r.daily)}</div>
+              <div style={{fontSize:10, color:DIM}}>
+                {r.combo.structs.map(s=>s.name).join(", ")} / {r.combo.outfits.map(o=>o.name).join(", ")}
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      {/* Totals */}
+      <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12}}>
+        {[
+          {label:"Daily",   value:totalDaily},
+          {label:"Monthly", value:totalMonthly, sub:"(x30 days)"},
+          {label:"Yearly",  value:totalYearly,  sub:"(x365 days)"},
+        ].map(({label, value, sub}) => (
+          <div key={label} style={{...panelStyle, textAlign:"center", marginBottom:0}}>
+            <div style={{fontSize:11, color:DIM, marginBottom:4}}>{label} {sub && <span style={{fontSize:10}}>{sub}</span>}</div>
+            <div style={{fontSize:26, fontWeight:"bold", color:goldColor(value)}}>{fmt(value)}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{fontSize:10, color:DIM, marginTop:10, textAlign:"center"}}>
+        Based on current market prices and each profile's #1 optimal combo. Update prices in Configuration.
+      </div>
+    </div>
+  );
+}
+
 // ── Defaults & persistence ────────────────────────────────────────────
 const DEF_INNATE     = {specialEnergy:3, specialGSC:0, specialCost:0, specialTime:3, generalGSC:3, generalTime:6, generalCost:4, generalEnergy:0};
 const DEF_STRUCTS    = ["acrobat","sheep","cards","divine","luterra","worldtree","acrobatweapon"];
@@ -408,7 +491,7 @@ export default function App() {
 
       {/* Tabs */}
       <div style={{display:"flex", gap:4, marginBottom:12}}>
-        {[["opt","Optimizer"],["cfg","Configuration"]].map(([id,lbl]) => (
+        {[["opt","Optimizer"],["cfg","Configuration"],["summary","Summary"]].map(([id,lbl]) => (
           <button key={id} style={{...btnStyle(tab===id), padding:"6px 18px", fontSize:13}} onClick={() => setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -567,6 +650,8 @@ export default function App() {
           </div>
         </div>
 
+      ) : tab === "summary" ? (
+        <SummaryTab profiles={profiles} prices={prices} />
       ) : (
         <div>
           {cappedInnate.length > 0 && (
