@@ -147,17 +147,28 @@ function calcProfileProfit(profile, prices) {
   var availO = OUTFITS.filter(function(o){ return p.outfits.indexOf(o.id) >= 0; });
   var results = optimize(availS, availO, p.innate, sSlots, oSlots, prices, 1);
   if (!results.length) return null;
+
   var tot = results[0].tot;
+
   var effSpCost  = Math.min(tot.specialCost  || 0, 10);
   var effGenCost = Math.min(tot.generalCost  || 0, 30);
   var effEnergy  = Math.min(tot.specialEnergy|| 0, 10);
+
   var reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost) / 100);
   var reducedEnergy = BASE_ENERGY * (1 - effEnergy / 100);
   var dailyCrafts   = DAILY_ENERGY / reducedEnergy;
-  var mat           = materialCostFn(prices);
-  var ppc           = ABIDOS_PER * prices.abidosPrice - mat - reducedFee;
+
+  var mat = materialCostFn(prices);
+
+  // ✅ FIX: include GSC in expected output
+  var gsc = effectiveGSC(tot.specialGSC || 0, tot.generalGSC || 0);
+  var expAbidos = ABIDOS_PER * (1 + gsc);
+
+  var ppc = expAbidos * prices.abidosPrice - mat - reducedFee;
+
   return { daily: dailyCrafts * ppc, dailyCrafts: dailyCrafts, ppc: ppc, combo: results[0] };
 }
+
 
 // ── Styles ──────────────────────────────────────────────────────────
 var BG="#0a1520", PANEL="#111d2b", BORDER="#1e3050", TEXT="#c8d4e0", DIM="#5a7a90", GOLD="#f0a500";
@@ -494,18 +505,28 @@ export default function App() {
     return optimize(availS, availO, p.innate, sSlots, oSlots, prices);
   }, [availS.map(function(s){return s.id;}).join(), availO.map(function(o){return o.id;}).join(), JSON.stringify(p.innate), sSlots, oSlots, JSON.stringify(prices)]);
 
-  var optimalProfit = useMemo(function(){
-    if (!results.length) return null;
-    var tot = results[0].tot;
-    var effSpCost  = Math.min(tot.specialCost  ||0, 10);
-    var effGenCost = Math.min(tot.generalCost  ||0, 30);
-    var effEnergy  = Math.min(tot.specialEnergy||0, 10);
-    var reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost)/100);
-    var reducedEnergy = BASE_ENERGY * (1 - effEnergy/100);
-    var dailyCrafts   = DAILY_ENERGY / reducedEnergy;
-    var ppc           = ABIDOS_PER*prices.abidosPrice - matCost - reducedFee;
-    return {ppc:ppc, daily:dailyCrafts*ppc, dailyCrafts:dailyCrafts};
-  }, [results, JSON.stringify(prices), matCost]);
+// inside App component
+var optimalProfit = useMemo(function(){
+  if (!results.length) return null;
+
+  var tot = results[0].tot;
+
+  var effSpCost  = Math.min(tot.specialCost  ||0, 10);
+  var effGenCost = Math.min(tot.generalCost  ||0, 30);
+  var effEnergy  = Math.min(tot.specialEnergy||0, 10);
+
+  var reducedFee    = BASE_FEE    * (1 - (effSpCost + effGenCost)/100);
+  var reducedEnergy = BASE_ENERGY * (1 - effEnergy/100);
+  var dailyCrafts   = DAILY_ENERGY / reducedEnergy;
+
+  // ✅ FIX: include GSC
+  var gsc = effectiveGSC(tot.specialGSC || 0, tot.generalGSC || 0);
+  var expAbidos = ABIDOS_PER * (1 + gsc);
+
+  var ppc = expAbidos * prices.abidosPrice - matCost - reducedFee;
+
+  return {ppc:ppc, daily:dailyCrafts*ppc, dailyCrafts:dailyCrafts};
+}, [results, JSON.stringify(prices), matCost]);
 
   var cappedInnate = Object.keys(p.innate).filter(function(k){ return CAPS[k] && p.innate[k] >= CAPS[k]; });
 
